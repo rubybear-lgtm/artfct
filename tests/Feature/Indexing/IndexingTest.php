@@ -16,6 +16,7 @@ use App\Services\Indexing\RendererContract;
 use App\Services\Indexing\RenderResult;
 use App\Services\Indexing\RenderTimeoutException;
 use App\Services\Indexing\VectorIndexContract;
+use App\Services\Search\SearchSnippet;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -105,6 +106,39 @@ test('static_html_extracts_h1_and_h2_headings_without_browser_rendering', functi
     expect($entry->rendered)->toBeFalse()
         ->and($entry->headings)->toBe(['Launch plan', 'Timeline'])
         ->and($entry->title)->toBe('Launch plan');
+});
+
+test('starter_leading_comment_is_not_indexed_or_snipped', function () {
+    $team = Team::factory()->create();
+    // Mirrors skills/artfct-team-doc/assets/doc-starter/index.html: a
+    // multi-line head comment naming slot tags (`<header>`, `<h1>`), whose
+    // `>` characters used to break tag-stripping (RUB-590).
+    $html = '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        .'<title>Document title</title>'
+        .'<!-- Artfct doc starter (doc@1). Fill the four content slots and nothing else: '
+        .'title <header class="doc-title"> heading and kicker '
+        .'body <article class="doc-body"> text and <h1> headings. '
+        .'Upgrade rule: replace doc.css and export.js only, never this file. -->'
+        .'<link rel="stylesheet" href="doc.css"></head>'
+        .'<body><main class="sheet"><header class="doc-title"><h1>Document title</h1></header>'
+        .'<article class="doc-body"><p>Write the document here. Keep each paragraph short and say what it settles.</p></article>'
+        .'</main></body></html>';
+
+    $entry = app(IndexingService::class)->indexArtifact($team, 'artifact-starter-comment', $html, []);
+
+    expect($entry->rendered)->toBeFalse()
+        ->and($entry->extracted_text)->not->toContain('Artfct doc starter')
+        ->and($entry->extracted_text)->not->toContain('heading and kicker')
+        ->and($entry->extracted_text)->not->toContain('Upgrade rule')
+        ->and($entry->extracted_text)->not->toContain('-->')
+        ->and($entry->extracted_text)->toContain('Write the document here.')
+        ->and($entry->headings)->toBe(['Document title']);
+
+    $snippet = SearchSnippet::make($entry->extracted_text, 'What does the document settle?', $entry->title);
+
+    expect($snippet)->not->toContain('heading and kicker')
+        ->not->toContain('Upgrade rule')
+        ->and($snippet)->toContain('Write the document here.');
 });
 
 test('markdown_indexes_as_plain_text_with_headings_and_no_markup', function () {
@@ -339,6 +373,32 @@ test('extraction_heuristics_needs_render_for_hydration_shell', function () {
 test('extraction_heuristics_skips_render_for_real_content', function () {
     $html = '<html><body><h1>Report</h1><p>'.str_repeat('Real static content. ', 5).'</p></body></html>';
     expect(ExtractionHeuristics::needsRender($html))->toBeFalse();
+});
+
+test('extraction_heuristics_keeps_body_text_when_script_contains_comment_opener', function () {
+    $html = '<!doctype html><html><head><title>Q3</title>'
+        .'<script>var s = "x"; if (/^<!--/.test(s)) { console.log("legacy"); }</script></head>'
+        .'<body><h1>Q3 plan</h1><h2>Risks</h2>'
+        .'<p>Quarterly roadmap and risk review notes for the team.</p><!-- footer --></body></html>';
+
+    expect(ExtractionHeuristics::visibleText($html))->toContain('Quarterly roadmap and risk review notes')
+        ->and(ExtractionHeuristics::visibleText($html))->not->toContain('console.log')
+        ->and(ExtractionHeuristics::headingsFromHtml($html))->toBe(['Q3 plan', 'Risks'])
+        ->and(ExtractionHeuristics::needsRender($html))->toBeFalse();
+});
+
+test('extraction_heuristics_closes_comment_at_abrupt_closing', function () {
+    $html = '<p><!--> Visible paragraph text that a browser shows <!-- note --></p>';
+
+    expect(ExtractionHeuristics::visibleText($html))->toContain('Visible paragraph text that a browser shows')
+        ->and(ExtractionHeuristics::visibleText($html))->not->toContain('note');
+});
+
+test('extraction_heuristics_drops_unterminated_script_and_comment_tails', function () {
+    $html = '<p>Lead paragraph stays.</p><script>var s = 1;';
+
+    expect(ExtractionHeuristics::visibleText($html))->toBe('Lead paragraph stays.')
+        ->and(ExtractionHeuristics::visibleText($html.' trailing <!-- never closed'))->toBe('Lead paragraph stays.');
 });
 
 test('extraction_heuristics_detects_markdown_and_strips_markup', function () {
