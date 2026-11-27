@@ -824,11 +824,12 @@ test('an_artifact_link_navigates_the_top_window_to_the_next_artifact', function 
  * RUB-628 review-6092991795 finding 1: Back from B must not bounce back to B.
  * A real frame navigation to the shim creates the joint-history middle entry
  * [A, A(shim=B), B]; Back reloads A with the frame restored to the shim URL,
- * which re-posts. The parent must reset the restored frame instead of
- * navigating the top window again. The first half is a real link click inside
- * the frame; the restored shim post is simulated after a real Back (which the
- * harness serves with a real back_forward navigation type) because the test
- * server answers the restored frame with a clean URL.
+ * which re-posts. The parent resets the restored frame instead of navigating
+ * the top window again. The signal is the shim's own navigation type (`via`):
+ * a restored shim reports back_forward. The first half is a real link click
+ * inside the frame; the restored shim post is simulated after a real Back
+ * (which the harness serves with a real back_forward navigation type) because
+ * the test server answers the restored frame with a clean URL.
  */
 test('a_real_frame_navigation_back_from_the_next_artifact_stays_on_the_source', function () {
     configureViewerBrowserLinks();
@@ -890,8 +891,9 @@ test('a_real_frame_navigation_back_from_the_next_artifact_stays_on_the_source', 
 
     // A real Back: the reloaded A reports a back_forward navigation type.
     // The restored shim would re-post B here; simulate that post with the
-    // frame as its source. Without the guard the parent bounces straight
-    // back to B; with it the frame is reset and the top window stays on A.
+    // frame as its source and the shim's own back_forward signal. Without the
+    // guard the parent bounces straight back to B; with it the frame is reset
+    // and the top window stays on A.
     $page->back()
         ->wait(1)
         ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
@@ -902,7 +904,7 @@ test('a_real_frame_navigation_back_from_the_next_artifact_stays_on_the_source', 
     $page->script(
         "window.dispatchEvent(new MessageEvent('message', {origin: window.location.origin, ".
         "source: document.querySelector('[data-testid=\"artifact-frame\"]').contentWindow, ".
-        "data: {type: 'artfct:navigate', url: window.location.origin + '/a/{$targetId}'}}))"
+        "data: {type: 'artfct:navigate', url: window.location.origin + '/a/{$targetId}', via: 'back_forward'}}))"
     );
 
     $page->wait(1)
@@ -913,11 +915,12 @@ test('a_real_frame_navigation_back_from_the_next_artifact_stays_on_the_source', 
 });
 
 /**
- * RUB-628 Ada review (2026-11-27): the back_forward guard must swallow only
- * the restored shim, not every later click. A -> B -> Back -> click B again
- * is all real frame navigations except the restored post (which the harness
- * cannot serve): the restored B post stays on A, then a real second frame
- * click to the same B navigates the top window to B again.
+ * RUB-628 Ada review (2026-11-27): the guard must swallow only the restored
+ * shim, not every later click. A -> B -> Back -> click B again is all real
+ * frame navigations except the restored post (which the harness cannot
+ * serve): the restored B post (via back_forward) stays on A, then a real
+ * second frame click to the same B (via navigate from the real shim)
+ * navigates the top window to B again.
  */
 test('a_real_frame_click_after_back_navigates_again_instead_of_being_swallowed', function () {
     configureViewerBrowserLinks();
@@ -982,11 +985,12 @@ test('a_real_frame_click_after_back_navigates_again_instead_of_being_swallowed',
         ->assertSee('Source artifact')
         ->assertVisible('@artifact-frame');
 
-    // The restored shim post: swallowed, the top window stays on A.
+    // The restored shim post (shim-side back_forward): swallowed, the top
+    // window stays on A.
     $page->script(
         "window.dispatchEvent(new MessageEvent('message', {origin: window.location.origin, ".
         "source: document.querySelector('[data-testid=\"artifact-frame\"]').contentWindow, ".
-        "data: {type: 'artfct:navigate', url: window.location.origin + '/a/{$targetId}'}}))"
+        "data: {type: 'artfct:navigate', url: window.location.origin + '/a/{$targetId}', via: 'back_forward'}}))"
     );
 
     $page->wait(1)
@@ -1010,6 +1014,111 @@ test('a_real_frame_click_after_back_navigates_again_instead_of_being_swallowed',
         "f.contentDocument.write('<a href=\"/a/{$targetId}\" id=\"real-go-again\">go again</a>'); ".
         'f.contentDocument.close(); '.
         "f.contentDocument.querySelector('#real-go-again').click()",
+    );
+
+    $page->waitForText('Target artifact')
+        ->assertPathIs('/a/'.$targetId)
+        ->assertSee('Target artifact')
+        ->assertScript("document.querySelectorAll('header').length", 1)
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+});
+
+/**
+ * RUB-628 Ada review 2026-11-27 round 2: a clean-frame Back must not swallow
+ * the very first genuine click. The harness restores A with a clean frame
+ * (no shim, so no restored post arrives) while the top still reports
+ * back_forward. A viewer-side one-shot guard would consume that first real
+ * click; the shim-side `via` signal does not: the real shim posts
+ * via=navigate and the top window navigates to B.
+ */
+test('a_first_real_frame_click_after_a_clean_frame_back_navigates_without_any_injected_message', function () {
+    configureViewerBrowserLinks();
+
+    [$team, $owner] = viewerBrowserOwner('Viewer Clean Back', 'viewer-clean-back@example.com');
+    seedViewerBrowserArtifact($team, $owner, ['title' => 'Source artifact']);
+
+    $targetId = 'efg567hij8901';
+    /** @var FakeArtifactDirectory $cleanBackDirectory */
+    $cleanBackDirectory = app(ArtifactDirectory::class);
+    $cleanBackDirectory->seedArtifact([
+        'id' => $targetId,
+        'org_id' => $team->slug,
+        'user_id' => $owner->id,
+        'title' => 'Target artifact',
+        'description' => 'Seeded to prove a clean-frame Back keeps the first click.',
+        'content_hash' => md5($targetId),
+        'created_at' => now()->subDay()->toIso8601String(),
+        'revoked_at' => null,
+        'sharing' => 'team',
+        'owner_user_id' => (string) $owner->id,
+        'provenance' => ['agent' => 'cursor', 'repo_url' => null, 'commit_sha' => null],
+    ]);
+
+    test()->actingAs($owner);
+
+    $page = visit(viewerBrowserArtifactUrl())
+        ->assertNoJavaScriptErrors()
+        ->assertSee('Source artifact')
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertVisible('@artifact-frame');
+
+    // First real artifact link: blank the frame (replace, no history entry),
+    // write a link without a history entry, click it for real. The server
+    // answers with the shim (via=navigate), which posts and the parent
+    // top-navigates to B.
+    $page->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        "f.contentWindow.location.replace('about:blank')",
+    );
+
+    $page->wait(0.5)->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        'f.contentDocument.open(); '.
+        "f.contentDocument.write('<a href=\"/a/{$targetId}\" id=\"real-go\">go</a>'); ".
+        'f.contentDocument.close(); '.
+        "f.contentDocument.querySelector('#real-go').click()",
+    );
+
+    $page->waitForText('Target artifact')
+        ->assertPathIs('/a/'.$targetId)
+        ->assertSee('Target artifact')
+        ->assertScript("document.querySelectorAll('header').length", 1)
+        ->assertVisible('@artifact-frame')
+        ->assertNoJavaScriptErrors();
+
+    // Real Back: the harness restores A with a clean frame (src still carries
+    // the token), so no restored shim post arrives — and none is injected
+    // here. The top still reports back_forward for its own navigation. Wait
+    // past any history-restoration activity so the frame settles before the
+    // first genuine click touches it (a restored shim would re-post and the
+    // parent would reset the frame; racing that reset with the blank below
+    // flakes the write/click sequence).
+    $page->back()
+        ->wait(3)
+        ->assertPathIs('/a/'.VIEWER_BROWSER_ARTIFACT_ID)
+        ->assertScript("(performance.getEntriesByType('navigation')[0]||{}).type", 'back_forward')
+        ->assertSee('Source artifact')
+        ->assertVisible('@artifact-frame')
+        ->assertScript("document.querySelector('[data-testid=\"artifact-frame\"]').getAttribute('src').includes('token=')");
+
+    $page->wait(1);
+
+    // The very first genuine click after that Back, with no injected message
+    // before it: blank, write, click for real. The real shim posts
+    // via=navigate, so the top window must navigate to B. A viewer-side
+    // one-shot back_forward guard would swallow this click and stay on A.
+    $page->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        "f.contentWindow.location.replace('about:blank')",
+    );
+
+    $page->wait(0.5)->script(
+        "const f = document.querySelector('[data-testid=\"artifact-frame\"]'); ".
+        'f.contentDocument.open(); '.
+        "f.contentDocument.write('<a href=\"/a/{$targetId}\" id=\"real-go-clean\">go clean</a>'); ".
+        'f.contentDocument.close(); '.
+        "f.contentDocument.querySelector('#real-go-clean').click()",
     );
 
     $page->waitForText('Target artifact')

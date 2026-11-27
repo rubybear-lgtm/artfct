@@ -142,7 +142,7 @@ final class ArtifactViewerController extends Controller
             '<meta name="referrer" content="no-referrer">'.
             '<title>Open this artifact</title></head>'.
             '<body><p><a href="'.$safeUrl.'" target="_blank" rel="noopener">Open this artifact</a></p>'.
-            "<script>try{window.parent.postMessage({type:'artfct:navigate',url:location.href},location.origin);}catch(e){}</script>".
+            "<script>try{var via='navigate';try{via=(performance.getEntriesByType('navigation')[0]||{}).type||'navigate';}catch(e){}window.parent.postMessage({type:'artfct:navigate',url:location.href,via:via},location.origin);}catch(e){}</script>".
             '</body></html>';
 
         return response($html, 200, [

@@ -779,10 +779,14 @@ test('a_framed_viewer_navigation_returns_the_shim_not_the_viewer', function () {
     $content = (string) $response->getContent();
 
     // The shim handshake and its fallback link, and nothing of the viewer.
+    // The shim posts its own navigation type (`via`) so the parent can tell
+    // a history-restored shim (back_forward) from a fresh click (navigate).
     expect($content)->toContain('artfct:navigate')
         ->toContain('location.href')
         ->toContain('location.origin')
         ->toContain('postMessage')
+        ->toContain('via')
+        ->toContain('getEntriesByType')
         ->toContain('Open this artifact')
         ->toContain('/a/'.ARTIFACT_LINK_ID)
         ->not->toContain('artifacts/show')

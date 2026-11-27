@@ -164,17 +164,6 @@ export default function ArtifactShow({
      */
     const frameRef = useRef<HTMLIFrameElement>(null);
 
-    /*
-     * The back_forward guard may only swallow the restored shim, never a
-     * later click: performance navigation type stays back_forward for the
-     * whole life of A after Back, so without this it would swallow every
-     * later A -> B click too. The first cross-artifact post after a
-     * back_forward load is the restored shim (the joint-history entry
-     * [A, A(shim=B), B] reloads A with the frame already on the shim);
-     * anything after that is a new click and must navigate.
-     */
-    const restoredShimHandledRef = useRef(false);
-
     useEffect(() => {
         const hash = window.location.hash;
 
@@ -194,10 +183,14 @@ export default function ArtifactShow({
      *
      * Two history edge cases (review-6092991795):
      * - Back from B restores A with the frame still on the shim, which
-     *   re-posts and bounces straight back to B. The first post on a
-     *   back_forward load is from restored history, so the frame is reset
-     *   to the clean artifact URL instead of navigating the top window;
-     *   later posts are new clicks and navigate.
+     *   re-posts and would bounce straight back to B. The shim names its own
+     *   navigation type (`via`): a restored shim reports back_forward and the
+     *   frame is reset to the clean artifact URL instead of navigating; a
+     *   fresh click reports navigate and navigates. The viewer's own
+     *   navigation type is never consulted: it stays back_forward for the
+     *   whole life of A after Back, so it cannot tell a restored shim from
+     *   the next genuine click (a clean-frame Back has no restored post at
+     *   all, and its first click must navigate).
      * - A same-artifact fragment link (e.g. /a/A -> /a/A#sec) assigns a URL
      *   that differs only by its hash, so the browser skips the reload and
      *   the frame stays on the shim. That case forces a server round trip.
@@ -212,7 +205,11 @@ export default function ArtifactShow({
                 return;
             }
 
-            const data = event.data as { type?: unknown; url?: unknown } | null;
+            const data = event.data as {
+                type?: unknown;
+                url?: unknown;
+                via?: unknown;
+            } | null;
 
             if (data === null || typeof data !== 'object') {
                 return;
@@ -262,40 +259,32 @@ export default function ArtifactShow({
             // Back/forward-restored shim: the frame's navigation to the shim
             // created a joint-history entry [A, A(shim=B), B], so Back reloads
             // A with the frame restored to the shim URL, which re-posts and
-            // bounces the top window straight back to B. Undo the restored
+            // would bounce the top window straight back to B. Undo the restored
             // frame instead of navigating. The shim is same-origin, so the
             // parent may replace it; the replacement is the clean artifact
             // URL, never a viewer URL.
             //
-            // The navigation type stays back_forward for the life of A after
-            // Back, so this swallows exactly one post per document load: the
-            // restored shim. A later A -> B click posts the same URL from a
-            // newly navigated shim and must navigate the top window.
-            if (!restoredShimHandledRef.current) {
-                try {
-                    const entries = performance.getEntriesByType(
-                        'navigation',
-                    ) as PerformanceNavigationTiming[];
+            // The signal is the shim's own navigation type (`via`), posted by
+            // the shim itself: a history restoration reports back_forward,
+            // while a fresh link click reports navigate. A message without
+            // `via` (an older shim, or a synthetic post in tests) is treated
+            // as a new click and navigates: after a clean-frame Back there is
+            // no restored post at all, so the next genuine click must never
+            // be swallowed.
+            if (data.via === 'back_forward') {
+                const frame = frameRef.current;
 
-                    if (entries[0]?.type === 'back_forward') {
-                        restoredShimHandledRef.current = true;
-                        const frame = frameRef.current;
+                if (frame?.contentWindow) {
+                    const cleanBase = frameUrl.split('#')[0];
+                    const hash = window.location.hash;
+                    const clean = FRAME_FRAGMENT.test(hash)
+                        ? `${cleanBase}${hash}`
+                        : frameUrl;
 
-                        if (frame?.contentWindow) {
-                            const cleanBase = frameUrl.split('#')[0];
-                            const hash = window.location.hash;
-                            const clean = FRAME_FRAGMENT.test(hash)
-                                ? `${cleanBase}${hash}`
-                                : frameUrl;
-
-                            frame.contentWindow.location.replace(clean);
-
-                            return;
-                        }
-                    }
-                } catch {
-                    // Fall through to the top-level navigation.
+                    frame.contentWindow.location.replace(clean);
                 }
+
+                return;
             }
 
             window.location.assign(target.href);
