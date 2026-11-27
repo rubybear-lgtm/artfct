@@ -375,6 +375,25 @@ test('extraction_heuristics_skips_render_for_real_content', function () {
     expect(ExtractionHeuristics::needsRender($html))->toBeFalse();
 });
 
+test('extraction_heuristics_keeps_body_text_when_script_contains_comment_opener', function () {
+    $html = '<!doctype html><html><head><title>Q3</title>'
+        .'<script>var s = "x"; if (/^<!--/.test(s)) { console.log("legacy"); }</script></head>'
+        .'<body><h1>Q3 plan</h1><h2>Risks</h2>'
+        .'<p>Quarterly roadmap and risk review notes for the team.</p><!-- footer --></body></html>';
+
+    expect(ExtractionHeuristics::visibleText($html))->toContain('Quarterly roadmap and risk review notes')
+        ->and(ExtractionHeuristics::visibleText($html))->not->toContain('console.log')
+        ->and(ExtractionHeuristics::headingsFromHtml($html))->toBe(['Q3 plan', 'Risks'])
+        ->and(ExtractionHeuristics::needsRender($html))->toBeFalse();
+});
+
+test('extraction_heuristics_closes_comment_at_abrupt_closing', function () {
+    $html = '<p><!--> Visible paragraph text that a browser shows <!-- note --></p>';
+
+    expect(ExtractionHeuristics::visibleText($html))->toContain('Visible paragraph text that a browser shows')
+        ->and(ExtractionHeuristics::visibleText($html))->not->toContain('note');
+});
+
 test('extraction_heuristics_detects_markdown_and_strips_markup', function () {
     $markdown = "# Title\n\n| A | B |\n| --- | --- |\n| 1 | 2 |";
 
