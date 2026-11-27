@@ -1,10 +1,13 @@
 <?php
 
+use App\Contracts\ArtifactContentSource;
+use App\Enums\ArtifactType;
 use App\Mcp\Servers\ArtfctServer;
 use App\Mcp\Tools\ReadArtifactTool;
 use App\Models\ArtifactIndexEntry;
 use App\Models\ArtifactIndexingFailure;
 use App\Models\Team;
+use App\Services\Artifacts\ArtifactTypeResolver;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
@@ -165,6 +168,28 @@ test('read_artifact reports stale text when the index lags the live version', fu
 
     $response = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'version' => 3])->assertOk();
     expect($response->json('result.content.0._meta.artfct.errorCode'))->toBe('version_not_indexed');
+});
+
+test('read_artifact returns the current version after a design system update', function () {
+    $team = Team::factory()->create(['slug' => 'rub-591-design']);
+    $token = remoteMcpToken($team);
+    readArtifactFixture($team, 'Ink is our only accent.', ['version' => 1], worker: ['version' => 2]);
+
+    $v2Html = '<!doctype html><html><head><title>Sample design system</title></head><body><h1>Sample design system</h1><p>Ink is our only accent. Paper joins it in version two with expanded tokens.</p></body></html>';
+    app(ArtifactContentSource::class)->seed('rub-591-design', READ_ARTIFACT_ID, $v2Html, ['agent' => 'claude-code', 'repo_url' => null, 'commit_sha' => null], version: 2);
+    app(ArtifactTypeResolver::class)->record($team, READ_ARTIFACT_ID, $v2Html, ArtifactType::DesignSystem);
+
+    $content = callReadArtifact($token, ['id' => READ_ARTIFACT_ID])->assertOk()->json('result.structuredContent');
+
+    expect($content['content']['text'])->toContain('Paper joins it in version two')
+        ->and($content['indexed_version'])->toBe(2)
+        ->and($content['current_version'])->toBe(2)
+        ->and($content['stale'])->toBeFalse();
+
+    $v1 = callReadArtifact($token, ['id' => READ_ARTIFACT_ID, 'version' => 1])->assertOk()->json('result.structuredContent');
+    expect($v1['content']['text'])->toBe('Ink is our only accent.')
+        ->and($v1['indexed_version'])->toBe(1)
+        ->and($v1['stale'])->toBeTrue();
 });
 
 test('read_artifact refuses a version request when the indexed version is unknown', function () {

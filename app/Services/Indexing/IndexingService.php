@@ -29,26 +29,20 @@ final class IndexingService
      */
     public function indexArtifact(Team $team, string $artifactId, string $html, array $provenance, ?int $version = null): ArtifactIndexEntry
     {
-        $rendered = ExtractionHeuristics::needsRender($html);
+        $extracted = ExtractionHeuristics::extractWithoutRender($html);
 
-        if ($rendered) {
+        if ($extracted === null) {
+            $rendered = true;
             $result = $this->renderer->render($team->slug, $artifactId, $html);
-            $text = $result->text;
+            $text = ExtractionHeuristics::withoutLeadingTitle($result->text, $result->title);
             $title = $result->title;
             $headings = $result->headings;
-        } elseif (ExtractionHeuristics::looksLikeMarkdown($html)) {
-            // MCP stores raw markdown as text/markdown; the Worker renders HTML
-            // on serve. Indexing must still strip `#` / `|---|` from the source.
-            $text = ExtractionHeuristics::plainTextFromMarkdown($html);
-            $title = ExtractionHeuristics::titleFromMarkdown($html);
-            $headings = ExtractionHeuristics::headingsFromMarkdown($html);
         } else {
-            $text = ExtractionHeuristics::visibleText($html);
-            $title = ExtractionHeuristics::titleFromHtml($html);
-            $headings = ExtractionHeuristics::headingsFromHtml($html);
+            $rendered = false;
+            $text = $extracted['text'];
+            $title = $extracted['title'];
+            $headings = $extracted['headings'];
         }
-
-        $text = ExtractionHeuristics::withoutLeadingTitle($text, $title);
 
         $values = [
             'rendered' => $rendered,
