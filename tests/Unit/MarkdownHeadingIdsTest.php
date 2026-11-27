@@ -28,7 +28,55 @@ it('emits the same heading ids as the Worker renderer for the shared fixture', f
         ->toContain('<h2 id="caf-cr-me">Café &amp; crème</h2>')
         ->toContain('<h2 id="section">!!!</h2>')
         ->toContain('<h1 id="hello-world-3">Hello World</h1>')
-        ->toContain('<h2 id="see">See ');
+        ->toContain('<h2 id="see">See ')
+        ->toContain('<h1 id="first-second">First<br>')
+        ->toContain('<h2 id="long-headings-are-truncated-so-the-viewer-still-forwards-the-fragment-and-scrolling-lands-on-the-intended-section-of-the">');
+});
+
+it('reads a hard line break as a separator, like the Worker does', function () {
+    // `<br>` plus the newline CommonMark writes make `textContent`
+    // "First\nsecond"; the Worker used to drop the break and emit
+    // `firstsecond` for the same heading.
+    $html = (new MarkdownRenderer)->toFragment("First  \nsecond\n===\n");
+
+    expect($html)->toContain('<h1 id="first-second">First<br>');
+});
+
+it('skips suffixes a literal heading already took', function () {
+    $html = (new MarkdownRenderer)->toFragment("# A\n\n## A\n\n## A-2\n\n## A");
+
+    expect($html)->toContain('<h1 id="a">A</h1>')
+        ->toContain('<h2 id="a-2">A</h2>')
+        ->toContain('<h2 id="a-2-2">A-2</h2>')
+        ->toContain('<h2 id="a-3">A</h2>');
+});
+
+it('keeps repeated heading ids linear', function () {
+    // The suffix search restarted at `-2` for every repeat, so N repeats cost
+    // N². 20k took minutes there and milliseconds here, so a generous bound
+    // still catches a return of the rescans.
+    $slugs = new HeadingSlug;
+    $started = microtime(true);
+
+    for ($i = 0; $i < 20_000; $i++) {
+        $slugs->id('Same heading');
+    }
+
+    $elapsed = microtime(true) - $started;
+
+    expect($slugs->id('Same heading'))->toBe('same-heading-20001')
+        ->and($elapsed)->toBeLessThan(5.0);
+});
+
+it('caps slugs so the viewer still forwards the fragment', function () {
+    // FRAME_FRAGMENT drops anything over 128 characters after `#`.
+    $long = str_repeat('word ', 100);
+    $html = (new MarkdownRenderer)->toFragment("# {$long}");
+
+    preg_match('/<h1 id="([^"]+)"/', $html, $matches);
+
+    expect($matches[1] ?? '')->toBe(HeadingSlug::slugify($long))
+        ->and(strlen($matches[1]))->toBeLessThanOrEqual(128);
 });
 
 it('dedupes repeated slugs with -2 and -3 suffixes', function () {

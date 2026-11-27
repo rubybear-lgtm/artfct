@@ -17,3 +17,9 @@
 # Hello World
 
 ## See ![the chart](https://example.com/chart.png)
+
+First  
+second
+======
+
+## Long headings are truncated so the viewer still forwards the fragment and scrolling lands on the intended section of the document

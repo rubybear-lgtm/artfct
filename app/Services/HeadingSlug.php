@@ -8,34 +8,67 @@ namespace App\Services;
  * Heading id slugs, shared by `MarkdownRenderer` and `Blog\BlogContent`.
  *
  * Shape: lowercase ASCII, every run of non-`[a-z0-9]` becomes one `-`,
- * trimmed; empty falls back to `section`. Dedupe appends `-2`, `-3`, ….
- * `backend/src/markdown.rs` mirrors this byte-for-byte, and
- * `tests/Fixtures/markdown-heading-ids.md` locks both renderers to it.
+ * truncated to `MAX_LENGTH`, trimmed; empty falls back to `section`.
+ * Dedupe appends `-2`, `-3`, …. `backend/src/markdown.rs` mirrors this
+ * byte-for-byte, and `tests/Fixtures/markdown-heading-ids.md` locks both
+ * renderers to it.
+ *
+ * Slugging each heading through one instance keeps the ids unique across a
+ * document: first use keeps the base, repeats take the next suffix.
  */
 final class HeadingSlug
 {
+    /**
+     * Longest base slug kept, before any `-N` suffix. The artifact viewer
+     * forwards at most 128 characters after `#` (`FRAME_FRAGMENT` in
+     * `resources/js/pages/artifacts/show.tsx`), leaving room for the suffix.
+     */
+    public const int MAX_LENGTH = 120;
+
+    /** @var array<string, true> */
+    private array $used = [];
+
+    /** @var array<string, int> */
+    private array $nextSuffix = [];
+
     public static function slugify(string $text): string
     {
         $slug = preg_replace('/[^a-z0-9]+/', '-', strtolower($text)) ?? '';
+
+        if (strlen($slug) > self::MAX_LENGTH) {
+            $slug = substr($slug, 0, self::MAX_LENGTH);
+        }
+
         $slug = trim($slug, '-');
 
         return $slug === '' ? 'section' : $slug;
     }
 
     /**
-     * @param  array<string, true>  $used
+     * Slugify one heading and make it unique within this instance's document.
      */
-    public static function unique(string $base, array &$used): string
+    public function id(string $text): string
     {
-        $id = $base;
-        $suffix = 2;
+        $base = self::slugify($text);
 
-        while (isset($used[$id])) {
-            $id = $base.'-'.$suffix;
-            $suffix++;
+        if (! isset($this->used[$base])) {
+            $this->used[$base] = true;
+
+            return $base;
         }
 
-        $used[$id] = true;
+        // Resume from where the previous repeat of this base landed, so N
+        // repeats cost N steps instead of N². `used` is still checked because
+        // a later heading can literally spell a candidate (`a-2`).
+        $suffix = $this->nextSuffix[$base] ?? 2;
+
+        do {
+            $id = $base.'-'.$suffix;
+            $suffix++;
+        } while (isset($this->used[$id]));
+
+        $this->used[$id] = true;
+        $this->nextSuffix[$base] = $suffix;
 
         return $id;
     }

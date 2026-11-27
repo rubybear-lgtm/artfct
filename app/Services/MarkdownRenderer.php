@@ -77,13 +77,10 @@ final class MarkdownRenderer
             return $fragment;
         }
 
-        $used = [];
+        $slugs = new HeadingSlug;
 
         foreach ($headings as $heading) {
-            $heading->setAttribute(
-                'id',
-                HeadingSlug::unique(HeadingSlug::slugify($heading->textContent), $used),
-            );
+            $heading->setAttribute('id', $slugs->id($heading->textContent));
         }
 
         $html = '';

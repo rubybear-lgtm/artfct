@@ -5,7 +5,6 @@ use App\Contracts\ArtifactDirectory;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\Artifacts\FakeArtifactDirectory;
-use App\Services\MarkdownRenderer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 
@@ -22,9 +21,13 @@ uses(RefreshDatabase::class);
  * that forwarding exactly (initial src without the hash, hash appended once
  * after mount): the heading lands inside the frame viewport, the document
  * scrolled, and the PNG shows the section instead of the top of the doc.
- * Both sides render `tests/Fixtures/markdown-heading-ids.md`, whose ids are
- * asserted from the Worker and Laravel renderers in
- * `backend/src/markdown.rs` and `tests/Unit/MarkdownHeadingIdsTest.php`.
+ *
+ * The harness serves the Worker's own render
+ * (`tests/Fixtures/rub603-markdown-rendered.html`, produced from
+ * `markdown-heading-ids.md` and asserted in `backend/src/markdown.rs`), not
+ * the PHP `MarkdownRenderer` test helper: production markdown is rendered by
+ * the Worker. The ids themselves are also asserted from the PHP renderer in
+ * `tests/Unit/MarkdownHeadingIdsTest.php`.
  */
 const RUB603_BROWSER_ARTIFACT_ID = 'rub603anchor1';
 const RUB603_BROWSER_ANCHOR = 'use-artfct-deploy-today';
@@ -97,17 +100,19 @@ test('the_viewer_forwards_a_valid_hash_into_the_frame_src', function () {
 });
 
 test('a_fragment_link_scrolls_the_rendered_markdown_to_the_section', function () {
-    $source = file_get_contents(dirname(__DIR__).'/Fixtures/markdown-heading-ids.md');
+    $rendered = file_get_contents(dirname(__DIR__).'/Fixtures/rub603-markdown-rendered.html');
 
-    expect($source)->not->toBeFalse();
-
-    $rendered = (new MarkdownRenderer)->toFullDocument($source);
+    expect($rendered)->not->toBeFalse()
+        ->and($rendered)->toContain('<h2 id="'.RUB603_BROWSER_ANCHOR.'">');
 
     Route::get('/__rub603-doc', fn () => response($rendered, 200, ['Content-Type' => 'text/html; charset=utf-8']));
 
     Route::get('/__rub603-viewer', fn () => response(
         '<!doctype html><title>RUB-603 harness viewer</title>'
-        .'<iframe data-testid="artifact-frame" title="Artifact" sandbox="allow-scripts allow-same-origin" src="/__rub603-doc" style="width:100%;height:320px;border:0"></iframe>'
+        .'<style>html,body{margin:0;height:100%}</style>'
+        // Frame fills the screenshot so the PNG shows the document, not
+        // white space under a short frame.
+        .'<iframe data-testid="artifact-frame" title="Artifact" sandbox="allow-scripts allow-same-origin" src="/__rub603-doc" style="width:100%;height:100vh;border:0"></iframe>'
         .'<script>'
         .'var FRAME_FRAGMENT = /^#[A-Za-z0-9_.-]{1,128}$/;'
         .'var frame = document.querySelector("[data-testid=\\"artifact-frame\\"]");'

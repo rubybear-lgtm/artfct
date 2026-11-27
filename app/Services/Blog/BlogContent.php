@@ -300,7 +300,7 @@ final class BlogContent
         }
 
         $parsed = [];
-        $used = [];
+        $slugs = new HeadingSlug;
 
         foreach ($sections as $section) {
             $heading = $section['heading'];
@@ -311,7 +311,7 @@ final class BlogContent
 
             // Two headings that slugify the same would give the review document
             // one anchor for two entries in its own table of contents.
-            $id = HeadingSlug::unique(HeadingSlug::slugify($heading), $used);
+            $id = $slugs->id($heading);
 
             $parsed[] = new BlogSection(
                 heading: $heading,
