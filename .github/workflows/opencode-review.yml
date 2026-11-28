@@ -38,8 +38,11 @@ jobs:
       - name: Sign in to OpenCode
         if: >-
           startsWith(vars.OPENCODE_FRONTEND_MODEL, 'opencode/') ||
+          startsWith(vars.OPENCODE_FRONTEND_MODEL, 'opencode-go/') ||
           startsWith(vars.OPENCODE_BACKEND_MODEL, 'opencode/') ||
-          startsWith(vars.OPENCODE_SECURITY_MODEL, 'opencode/')
+          startsWith(vars.OPENCODE_BACKEND_MODEL, 'opencode-go/') ||
+          startsWith(vars.OPENCODE_SECURITY_MODEL, 'opencode/') ||
+          startsWith(vars.OPENCODE_SECURITY_MODEL, 'opencode-go/')
         env:
           AUDIENCE: https://opencode.ai/console
           CLIENT_ID: sk_d6234f5f-8c41-48f6-8178-59939edf8674
@@ -87,7 +90,7 @@ jobs:
           review() {
             local role="$1" model="$2" scope="$3" result=0
             local -a model_args=(--model "$model")
-            if [[ "$model" == opencode/* ]]; then
+            if [[ "$model" == opencode/* || "$model" == opencode-go/* ]]; then
               model_args+=(--variant high)
             fi
             printf '\n### %s\n\n' "$role" >> "$GITHUB_STEP_SUMMARY"
