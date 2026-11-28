@@ -10,6 +10,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   specialist-review:
@@ -34,6 +35,31 @@ jobs:
           gh api -H 'Accept: application/vnd.github.diff' \
             "repos/$GITHUB_REPOSITORY/compare/$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/review-diff.txt"
 
+      - name: Sign in to OpenCode
+        if: >-
+          startsWith(vars.OPENCODE_FRONTEND_MODEL, 'opencode/') ||
+          startsWith(vars.OPENCODE_BACKEND_MODEL, 'opencode/') ||
+          startsWith(vars.OPENCODE_SECURITY_MODEL, 'opencode/')
+        env:
+          AUDIENCE: https://opencode.ai/console
+          CLIENT_ID: sk_86c536d6-f743-41be-8b51-c22958c25a5c
+        run: |
+          set -euo pipefail
+          oidc=$(curl --silent --show-error --fail --max-time 30 \
+            --oauth2-bearer "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" |
+            jq -er '.value | strings | select(length > 0)')
+          echo "::add-mask::$oidc"
+          token=$(curl --silent --show-error --fail --max-time 30 \
+            https://opencode.ai/console/auth/oauth/token \
+            --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+            --data-urlencode 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
+            --data-urlencode "client_id=$CLIENT_ID" \
+            --data-urlencode "subject_token=$oidc" |
+            jq -er '.access_token | strings | select(length > 0)')
+          echo "::add-mask::$token"
+          printf 'OPENCODE_API_KEY=%s\n' "$token" >> "$GITHUB_ENV"
+
       - name: Run specialists
         env:
           # Model overrides use OpenCode's provider/model syntax. Examples:
@@ -42,7 +68,6 @@ jobs:
           BACKEND_MODEL: ${{ vars.OPENCODE_BACKEND_MODEL }}
           SECURITY_MODEL: ${{ vars.OPENCODE_SECURITY_MODEL }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENCODE_CONFIG_CONTENT: '{"share":"disabled","permission":{"*":"deny"}}'
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
