@@ -39,6 +39,14 @@ function previewCollectionFixture(TeamRole $role, int $artifactCount = 1): array
     return [$team, $user, $collection];
 }
 
+/**
+ * Build a browser script that polls a boolean JS expression until true or timeout.
+ */
+function pollUntilScript(string $condition, int $timeoutMs = 8000): string
+{
+    return 'new Promise((resolve) => { const started = Date.now(); const check = () => { const ok = Boolean('.$condition.'); if (ok || Date.now() - started > '.$timeoutMs.') { resolve(ok); } else { setTimeout(check, 50); } }; check(); })';
+}
+
 test('collection previews scale and stay inside their cards at all four widths', function (int $width, int $columns) {
     config(['services.artifact_access.token_secret' => null]);
     [$team, $user, $collection] = previewCollectionFixture(TeamRole::Admin, 3);
@@ -53,17 +61,17 @@ test('collection previews scale and stay inside their cards at all four widths',
         ->assertScript("document.querySelector('[data-testid=collection-toggle-{$collection->id}]').scrollIntoView() || true")
         // Frames also need hydration plus an IntersectionObserver tick, which
         // can outlast a fixed wait in a parallel CI run.
-        ->assertScript('new Promise((resolve) => { const started = Date.now(); const check = () => { const count = document.querySelectorAll("iframe").length; if (count > 0 || Date.now() - started > 8000) { resolve(count); } else { setTimeout(check, 50); } }; check(); })', 1)
+        ->assertScript(pollUntilScript('document.querySelectorAll("iframe").length > 0'), true)
         ->assertScript('document.querySelectorAll("iframe").length', 1)
         ->assertScript('document.querySelector("iframe").getAttribute("aria-hidden")', 'true')
         ->assertScript('Array.from(document.querySelectorAll("iframe")).every(frame => frame.getAttribute("sandbox") === "" && frame.getAttribute("loading") === "lazy" && frame.getAttribute("referrerpolicy") === "no-referrer" && frame.tabIndex === -1 && getComputedStyle(frame).pointerEvents === "none")')
         ->assertScript('document.querySelector("iframe").title.startsWith("Preview of LongArtifactTitle")')
         ->assertNoJavaScriptErrors();
 
-    $page->click("@collection-toggle-{$collection->id}")->wait(0.2);
+    $page->click("@collection-toggle-{$collection->id}")
+        ->assertScript(pollUntilScript("document.getElementById('collection-panel-{$collection->id}') !== null"), true);
     $page->script("document.getElementById('collection-panel-{$collection->id}').scrollIntoView()");
-    $page->wait(0.2)
-        ->assertScript("document.querySelector('[data-testid=collection-artifact-{$collection->id}-preview-document-0] iframe') !== null")
+    $page->assertScript(pollUntilScript("document.querySelector('[data-testid=collection-artifact-{$collection->id}-preview-document-0] iframe') !== null"), true)
         ->assertScript("document.querySelector('[data-testid=collection-artifact-{$collection->id}-preview-document-0] iframe').getAttribute('aria-hidden') === null")
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth')
         ->assertScript(<<<'JS'
@@ -83,20 +91,21 @@ test('large collections mount only nearby previews and unload them when scrolled
     [$team, $user, $collection] = previewCollectionFixture(TeamRole::Member, 30);
     test()->actingAs($user);
 
-    $page = visit(route('teams.collections.index', $team))->resize(390, 650)->wait(0.2);
-    $page->assertScript('document.querySelectorAll("iframe").length', 1)
-        ->click("@collection-toggle-{$collection->id}")->wait(0.2);
+    $page = visit(route('teams.collections.index', $team))->resize(390, 650);
+    $page->assertScript(pollUntilScript('document.querySelectorAll("iframe").length === 1'), true)
+        ->click("@collection-toggle-{$collection->id}")
+        ->assertScript(pollUntilScript("document.querySelector('[data-testid=collection-artifact-{$collection->id}-preview-document-0] iframe') !== null"), true);
 
     $page->assertScript('document.querySelectorAll("iframe").length < 10')
         ->assertScript('document.querySelector(\'iframe[src*="preview-document-29/"]\') === null');
 
     $page->script("document.querySelector('[data-testid=collection-artifact-{$collection->id}-preview-document-29]').scrollIntoView()");
-    $page->wait(0.2)
-        ->assertScript('document.querySelector(\'iframe[src*="preview-document-29/"]\') !== null')
+    $page->assertScript(pollUntilScript('document.querySelector(\'iframe[src*="preview-document-29/"]\') !== null'), true)
         ->assertScript('document.querySelectorAll("iframe").length < 10')
         ->assertNoJavaScriptErrors();
 
-    $page->click("@collection-close-{$collection->id}")->wait(0.2)
+    $page->click("@collection-close-{$collection->id}")
+        ->assertScript(pollUntilScript("document.getElementById('collection-panel-{$collection->id}') === null && document.querySelectorAll('iframe').length <= 1"), true)
         ->assertMissing("@collection-panel-{$collection->id}")
         ->assertScript('document.querySelectorAll("iframe").length <= 1')
         ->assertNoJavaScriptErrors();
@@ -108,7 +117,8 @@ test('stack management permissions remain distinct from expansion', function (Te
     test()->actingAs($user);
 
     $page = visit(route('teams.collections.index', $team))->resize(320, 850);
-    $page->click("@collection-toggle-{$collection->id}")->wait(0.2)
+    $page->click("@collection-toggle-{$collection->id}")
+        ->assertScript(pollUntilScript("document.querySelector('[data-testid=collection-toggle-{$collection->id}]')?.getAttribute('aria-expanded') === 'true'"), true)
         ->assertAttribute("@collection-toggle-{$collection->id}", 'aria-expanded', 'true')
         ->assertPresent("@collection-open-{$collection->id}-preview-document-0")
         ->assertNoJavaScriptErrors();
@@ -127,7 +137,8 @@ test('stack management permissions remain distinct from expansion', function (Te
 
         if ($role === TeamRole::Admin) {
             // The card's controls sit behind the modal, so close it first.
-            $page->click("@collection-close-{$collection->id}")->wait(0.2);
+            $page->click("@collection-close-{$collection->id}")
+                ->assertScript(pollUntilScript("document.getElementById('collection-panel-{$collection->id}') === null"), true);
             $page->click('Unpin canonical')->waitForText('Unpinned.')
                 ->assertSee('Pin as canonical');
             $page->click('Pin as canonical')->waitForText('Pinned.')

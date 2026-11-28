@@ -393,7 +393,7 @@ jobs:
       - name: Run Pest (browser hydration with SSR)
         env:
           TEST_INERTIA_SSR: 'true'
-        run: php -d memory_limit=512M vendor/bin/pest --compact --testsuite=Browser --filter=hydrates
+        run: php -d memory_limit=512M vendor/bin/pest --compact --testsuite=Browser --filter=hydrates --fail-on-skipped
 
       - name: Stop Inertia SSR server
         if: always()

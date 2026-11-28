@@ -290,7 +290,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           STARTED_AT: ${{ needs.claude.outputs.started_at }}
           REVIEW_MODEL: ${{ vars.ARTFCT_OPENCODE_REVIEW_MODEL || 'opencode-go/deepseek-v4.1-flash' }}
-          CLIENT_ID: sk_d6234f5f-8c41-48f6-8178-59939edf8674
+          CLIENT_ID: ${{ vars.OPENCODE_OIDC_CLIENT_ID }}
           OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny"}}'
         run: |
           set -euo pipefail
@@ -302,6 +302,11 @@ jobs:
               and (.body | test("^## Artfct PR Review — (Approve|Request changes|Deny)(\\r?\\n|$)"))) | .id')
           if [[ -n "$posted" ]]; then
             exit 0
+          fi
+
+          if [[ -z "$CLIENT_ID" ]]; then
+            echo '::error::Repository variable OPENCODE_OIDC_CLIENT_ID is not set.'
+            exit 1
           fi
 
           gh api -H 'Accept: application/vnd.github.diff' \
@@ -383,7 +388,7 @@ jobs:
             exit 1
           fi
           sed 's/@/＠/g' normalized.md > advisory.md
-          printf '\n_Provider: OpenCode (`%s`)._\n' "$REVIEW_MODEL" >> advisory.md
+          printf '\n_Provider: OpenCode (\140%s\140)._\n' "$REVIEW_MODEL" >> advisory.md
           jq -n --arg head "$HEAD_SHA" --rawfile body advisory.md \
             '{commit_id:$head,event:"COMMENT",body:$body}' > review.json
           gh api "$endpoint/reviews" --input review.json --jq '.html_url'
