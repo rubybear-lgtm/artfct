@@ -401,6 +401,19 @@ test('extraction_heuristics_drops_unterminated_script_and_comment_tails', functi
         ->and(ExtractionHeuristics::visibleText($html.' trailing <!-- never closed'))->toBe('Lead paragraph stays.');
 });
 
+test('extraction_heuristics_keeps_body_text_after_custom_style_or_script_elements', function () {
+    $html = '<html><body><h1>Brand guide</h1><style-swatch color="oxblood"></style-swatch>'
+        .'<h2>Colours</h2><p>Use oxblood for the single accent and bone for the canvas across every document.</p>'
+        .'<script-runner mode="demo"></script-runner><h2>Results</h2>'
+        .'<p>The pilot cut weekly reporting time for every team.</p></body></html>';
+
+    expect(ExtractionHeuristics::visibleText($html))
+        ->toContain('Use oxblood for the single accent')
+        ->toContain('The pilot cut weekly reporting time')
+        ->and(ExtractionHeuristics::headingsFromHtml($html))->toBe(['Brand guide', 'Colours', 'Results'])
+        ->and(ExtractionHeuristics::needsRender($html))->toBeFalse();
+});
+
 test('extraction_heuristics_detects_markdown_and_strips_markup', function () {
     $markdown = "# Title\n\n| A | B |\n| --- | --- |\n| 1 | 2 |";
 

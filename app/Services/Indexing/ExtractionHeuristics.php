@@ -89,7 +89,7 @@ final class ExtractionHeuristics
      */
     private static function withoutNonVisible(string $html): string
     {
-        return preg_replace('#<!--(?:-?>|.*?--!?>|.*+)|<(script|style)\b[^>]*+>(?:.*?</\1\s*>|.*+)#is', ' ', $html) ?? $html;
+        return preg_replace('#<!--(?:-?>|.*?--!?>|.*+)|<(script|style)(?![\w-])[^>]*+>(?:.*?</\1\s*>|.*+)#is', ' ', $html) ?? $html;
     }
 
     /**
