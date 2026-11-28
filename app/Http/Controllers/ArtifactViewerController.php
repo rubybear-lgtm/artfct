@@ -73,8 +73,20 @@ final class ArtifactViewerController extends Controller
         ArtifactDirectory $artifacts,
         PublicArtifactSource $publicArtifacts,
         ?int $version = null,
-    ): InertiaResponse|RedirectResponse {
+    ): InertiaResponse|RedirectResponse|Response {
         abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
+
+        // A framed navigation to a viewer URL (an artifact-to-artifact link
+        // followed inside the sandboxed frame, RUB-628) gets a minimal shim
+        // instead of the full Inertia viewer, so the frame never renders a
+        // second header inside itself. The shim posts its URL to the parent,
+        // which navigates the top window; unanswered it stays a working
+        // "Open this artifact" link. Before auth so a private link signs in
+        // at the top level, and before artifact resolution so nothing is
+        // minted or audited for the nested load.
+        if (strtolower((string) $request->header('Sec-Fetch-Dest')) === 'iframe') {
+            return $this->framedNavigationShim($request);
+        }
 
         // The version route names the version in the path; `?version=` on
         // `artifacts.show` stays supported, and the path wins when both exist.
@@ -106,6 +118,49 @@ final class ArtifactViewerController extends Controller
         }
 
         abort(404);
+    }
+
+    /**
+     * The framed-navigation shim (RUB-628): a minimal HTML page for a viewer
+     * URL loaded as a subframe, so an artifact-to-artifact link followed
+     * inside the sandboxed artifact frame never renders the full viewer
+     * (and its header) nested inside itself. The script announces its URL to
+     * the parent viewer until acknowledged, so a post that fires before the
+     * parent hydrates (SSR pages) is not lost; the link stays for a parent
+     * that does not answer (a cross-environment embed) or a reader who opens
+     * it directly. The link opens a new tab: a same-tab click inside the
+     * frame would only load the shim again. Never cached, never indexed, and
+     * deliberately branchless on freshness, previews, or downloads.
+     */
+    private function framedNavigationShim(Request $request): Response
+    {
+        $url = $request->fullUrl();
+        $safeUrl = e($url);
+
+        $html = '<!doctype html>'.
+            '<html lang="en"><head><meta charset="utf-8">'.
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'.
+            '<meta name="referrer" content="no-referrer">'.
+            '<title>Open this artifact</title></head>'.
+            '<body><p><a href="'.$safeUrl.'" target="_blank" rel="noopener">Open this artifact</a></p>'.
+            '<script>(function(){var acked=false,tries=0,via="navigate";'.
+            'try{via=(performance.getEntriesByType("navigation")[0]||{}).type||"navigate";}catch(e){}'.
+            'function announce(){if(acked||tries>=20)return;tries++;'.
+            'try{window.parent.postMessage({type:"artfct:navigate",url:location.href,via:via},location.origin);}catch(e){}'.
+            'if(!acked&&tries<20)setTimeout(announce,500);}'.
+            'window.addEventListener("message",function(e){'.
+            'try{if(e.origin===location.origin&&e.data&&e.data.type==="artfct:ack")acked=true;}catch(err){}});'.
+            'window.addEventListener("pagehide",function(){acked=true;});'.
+            'announce();})();</script>'.
+            '</body></html>';
+
+        return response($html, 200, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+            'Cache-Control' => 'no-store',
+            'Referrer-Policy' => 'no-referrer',
+            'X-Robots-Tag' => 'noindex',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     /**

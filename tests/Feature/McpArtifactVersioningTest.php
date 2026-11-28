@@ -10,6 +10,7 @@ use App\Models\Team;
 use App\Services\Artifacts\ArtifactAccessLink;
 use App\Services\Artifacts\ArtifactViewLink;
 use App\Services\Artifacts\FakeArtifactDirectory;
+use App\Services\Auth\OrgJwtService;
 use App\Services\Billing\FakeUsage;
 use App\Services\Billing\UsageContract;
 use Illuminate\Http\Client\Request;
@@ -449,9 +450,9 @@ test('version-aware link builders keep the /p/{id}/v:{version}/ path', function 
 });
 
 /** Call deploy_artifact for RUB-443's base-version tests. */
-function deployWithBase(string $token, array $arguments): TestResponse
+function deployWithBase(string $token, array $arguments, array $headers = []): TestResponse
 {
-    return test()->withToken($token)->postJson('/mcp', [
+    return test()->withToken($token)->withHeaders($headers)->postJson('/mcp', [
         'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
         'params' => ['name' => 'deploy_artifact', 'arguments' => $arguments],
     ]);
@@ -481,6 +482,101 @@ test('deploy_artifact refuses a stale base_version and returns the live version 
         ->and($response->json('result.content.0._meta.artfct.details.base_version'))->toBe(3);
 
     Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/versions'));
+});
+
+test('stale_base recovery exposes version provenance', function () {
+    configureArtifactLinks();
+    configureSigning(testSigningKey());
+
+    $team = Team::factory()->create(['slug' => 'rub-443-recovery']);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    $id = STABLE_ARTIFACT_ID;
+    $agent = 'composio-recovery-test';
+    $publishedAt = '2026-11-27T12:00:00Z';
+    $liveVersion = 3;
+    $versionCreatedAt = null;
+    $versionAgent = null;
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts/'.$id => function () use (&$liveVersion, &$versionCreatedAt, $id) {
+            return Http::response([
+                'id' => $id,
+                'tier' => 'secure',
+                'sharing' => 'team',
+                'version' => $liveVersion,
+                'version_count' => $liveVersion,
+                'updated_at' => $versionCreatedAt ?? '2026-11-27T11:00:00Z',
+            ], 200);
+        },
+        'worker.test/v1/artifacts/'.$id.'/versions' => function (Request $request) use (&$liveVersion, &$versionCreatedAt, &$versionAgent, $id, $publishedAt) {
+            $liveVersion = 4;
+            $versionCreatedAt = $publishedAt;
+            $versionAgent = $request['provenance']['agent'] ?? null;
+
+            return Http::response([
+                'id' => $id,
+                'version' => 4,
+                'url' => "https://worker.test/p/{$id}/",
+                'created' => false,
+                'missing_files' => [],
+                'tier' => 'secure',
+                'sharing' => 'team',
+            ], 201);
+        },
+        'worker.test/v1/artifacts/'.$id.'/versions/4' => function () use (&$versionCreatedAt, &$versionAgent, $user) {
+            return Http::response([
+                'version' => 4,
+                'created_at' => $versionCreatedAt,
+                'created_by' => (string) $user->id,
+                'agent' => $versionAgent,
+                'content_hash' => str_repeat('a', 64),
+                'current' => true,
+                'restored_from' => null,
+            ], 200);
+        },
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $arguments = ['html' => '<!doctype html><title>Recovery</title><p>v4</p>', 'artifact_id' => $id, 'base_version' => 3];
+    $headers = ['MCP-Client-Name' => $agent];
+
+    $first = deployWithBase($token, $arguments, $headers)->assertOk();
+
+    expect($first->json('result.isError'))->toBeFalse()
+        ->and($first->json('result.structuredContent.version'))->toBe(4)
+        ->and($first->json('result.structuredContent.base_version_checked'))->toBeTrue()
+        ->and($versionAgent)->toBe($agent);
+
+    $retry = deployWithBase($token, $arguments, $headers)->assertOk();
+
+    expect($retry->json('result.isError'))->toBeTrue()
+        ->and($retry->json('result.structuredContent.code'))->toBe('stale_base')
+        ->and($retry->json('result.structuredContent.retryable'))->toBeFalse()
+        ->and($retry->json('result.structuredContent.next_action'))->toBe('read_artifact')
+        ->and($retry->json('result.structuredContent.base_version'))->toBe(3)
+        ->and($retry->json('result.structuredContent.live_version'))->toBe(4)
+        ->and($retry->json('result.structuredContent.current_version'))->toBe(4);
+
+    expect(Http::recorded(fn (Request $request): bool => $request->method() === 'POST'
+        && str_ends_with((string) $request->url(), '/v1/artifacts/'.$id.'/versions')))->toHaveCount(1);
+
+    $recovery = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call',
+        'params' => ['name' => 'get_artifact', 'arguments' => ['id' => $id, 'version' => 4]],
+    ])->assertOk();
+
+    expect($recovery->json('result.isError'))->toBeFalse()
+        ->and($recovery->json('result.structuredContent.version'))->toBe(4)
+        ->and($recovery->json('result.structuredContent.version_count'))->toBe(4)
+        ->and($recovery->json('result.structuredContent.created_by'))->toBe((string) $user->id)
+        ->and($recovery->json('result.structuredContent.agent'))->toBe($agent)
+        ->and($recovery->json('result.structuredContent.created_at'))->toBe($publishedAt)
+        ->and($recovery->json('result.structuredContent.updated_at'))->toBe($publishedAt)
+        ->and($recovery->json('result.structuredContent.current'))->toBeTrue();
+
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'GET'
+        && str_ends_with((string) $request->url(), '/v1/artifacts/'.$id.'/versions/4'));
 });
 
 test('deploy_artifact rejects a base_version ahead of the live version', function () {

@@ -755,3 +755,116 @@ test('a member viewing a slide deck is told it is a deck for the Present action,
     test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)->assertInertia(fn (Assert $page) => $page
         ->where('isSlideDeck', false));
 });
+
+/**
+ * RUB-628: an artifact-to-artifact link followed inside the sandboxed frame
+ * loads the next viewer URL as a subframe. The server answers that framed
+ * navigation with a minimal shim instead of the full Inertia viewer, so the
+ * frame never renders a second header inside itself. The shim posts its URL
+ * to the parent, which navigates the top window; unanswered it stays a
+ * working "Open this artifact" link.
+ */
+test('a_framed_viewer_navigation_returns_the_shim_not_the_viewer', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('shim-team', 'Shim Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team']);
+
+    $response = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID, ['Sec-Fetch-Dest' => 'iframe']);
+
+    $response->assertOk();
+    expect($response->headers->get('Content-Type'))->toContain('text/html');
+
+    $content = (string) $response->getContent();
+
+    // The shim handshake and its fallback link, and nothing of the viewer.
+    // The shim posts its own navigation type (`via`) so the parent can tell
+    // a history-restored shim (back_forward) from a fresh click (navigate).
+    expect($content)->toContain('artfct:navigate')
+        ->toContain('location.href')
+        ->toContain('location.origin')
+        ->toContain('postMessage')
+        ->toContain('via')
+        ->toContain('getEntriesByType')
+        ->toContain('Open this artifact')
+        ->toContain('/a/'.ARTIFACT_LINK_ID)
+        ->not->toContain('artifacts/show')
+        ->not->toContain('artifact-frame');
+
+    // The fallback link escapes the frame in a new tab: a same-tab click
+    // would only load the shim again instead of opening the artifact.
+    expect($content)->toContain('target="_blank"')
+        ->toContain('rel="noopener"');
+
+    // The shim re-announces until the parent acknowledges, so a post that
+    // fires before hydration is not lost; the parent answers artfct:ack.
+    expect($content)->toContain('artfct:ack')
+        ->toContain('setTimeout');
+
+    // Never cached, never indexed, never the referrer.
+    expect($response->headers->get('Cache-Control'))->toContain('no-store')
+        ->and($response->headers->get('Referrer-Policy'))->toContain('no-referrer')
+        ->and($response->headers->get('X-Robots-Tag'))->toContain('noindex');
+
+    // No Content-Security-Policy on the shim: the re-announce script is
+    // inline, and a script-src without 'unsafe-inline' would silence it.
+    expect($response->headers->has('Content-Security-Policy'))->toBeFalse();
+
+    // The nested load mints no link and audits nothing.
+    expect(AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->exists())->toBeFalse();
+});
+
+test('a_framed_version_navigation_returns_the_same_shim', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('shim-version-team', 'Shim Version Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team']);
+
+    $response = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/v/2', ['Sec-Fetch-Dest' => 'iframe']);
+
+    $response->assertOk();
+    expect((string) $response->getContent())->toContain('artfct:navigate')
+        ->toContain('Open this artifact')
+        ->and($response->headers->get('Cache-Control'))->toContain('no-store');
+});
+
+test('the_shim_runs_before_auth_so_a_private_link_signs_in_at_the_top_level', function () {
+    $team = viewerTeam('shim-guest-team', 'Shim Guest Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team']);
+
+    // A signed-out visitor's framed load gets the shim, not a login page in
+    // the frame; the parent's top-level navigation then signs in as usual.
+    $framed = test()->get('/a/'.ARTIFACT_LINK_ID, ['Sec-Fetch-Dest' => 'iframe']);
+
+    $framed->assertOk();
+    expect((string) $framed->getContent())->toContain('artfct:navigate');
+
+    test()->get('/a/'.ARTIFACT_LINK_ID)->assertRedirect(route('login'));
+});
+
+test('a_top_level_viewer_request_and_other_viewer_routes_are_unchanged_by_the_shim', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('shim-plain-team', 'Shim Plain Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team']);
+
+    // No framed-navigation header: the full viewer, as before.
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->component('artifacts/show'));
+
+    // A different Sec-Fetch-Dest is not a framed navigation either.
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID, ['Sec-Fetch-Dest' => 'document'])
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->component('artifacts/show'));
+
+    // The freshness poll and the preview route never branch to the shim,
+    // even when a frame asks: card previews stay as they are.
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/freshness', ['Sec-Fetch-Dest' => 'iframe'])
+        ->assertOk()
+        ->assertExactJson(['version' => 1, 'sharing' => 'team', 'revoked' => false]);
+});

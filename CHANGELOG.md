@@ -6,6 +6,8 @@ Every pull request adds an entry under Unreleased and in the [Artfct Release Cha
 
 ### Added
 
+- RUB-621: the [Composio toolkit spec](https://github.com/rubybear-lgtm/artfct/pull/219) — `resources/composio/toolkit.json` defines the seven v1 tools (`deploy`, `search`, `get`, `read`, list/add comments, `get_connection`), their scopes and idempotency, and `docs/composio-toolkit.md` records the arguments held back from v1 and the executor behaviour RUB-622 must implement. `tests/Feature/ComposioToolkitTest.php` fails if the JSON drifts from the hosted MCP tool schemas. Why: RUB-619 needs one schema source for the listing and RUB-622 for execution. Impact: `search_artifacts` now advertises `limit` minimum 1 and maximum 50 in `tools/list`. Runtime validation already enforced those bounds, so existing valid calls are unchanged.
+
 - RUB-606 / Spec 22 AC-O1: hosted OAuth advertises `openid` and `email` (outside `McpScope`), serves `GET /oauth/userinfo` (`sub`, optional `email`, `email_verified` from `users.email_verified_at`), and serves `GET /.well-known/openai-apps-challenge` from `OPENAI_APPS_CHALLENGE` (404 when unset).
 
 - A `portable` onboarding host (RUB-596), the set-up that works in any app: check the connection, read the usage rules and ask the save question, with no project file, memory note or settings change. It is now the default when `get_guidance` is called for `onboarding` without a host, and the `unknown` playbook falls back to it instead of asking the person. The onboard skill names a specific app only when the agent is sure of it and uses `portable` otherwise, instead of defaulting to `claude-app`, so Codex, Hermes, OpenClaw and other Agent Plugins clients no longer get the Claude app's steps. Guidance version 1.14.0.
@@ -21,9 +23,13 @@ Every pull request adds an entry under Unreleased and in the [Artfct Release Cha
 
 ### Fixed
 
+- RUB-629: the 768px case in `CollectionPreviewBrowserTest` now waits for the rendered grid column count instead of asserting after a fixed 200 ms, so a slow style or hydration tick under parallel load no longer flakes the pre-push hook. Test-only change; production layout unchanged.
+
 - The plugin skill sync script reads and writes `skills/` at the plugin repository's root, where the plugin has kept them since version 1.3.0, and includes the `presentation` skill, which a sync would otherwise have deleted from the plugin.
 
 - RUB-577: a viewer link with a fragment, such as `/a/{id}#option-b`, now passes that fragment to the artifact, so the page can scroll to it. The viewer adds the fragment to the artifact frame's `src` after mount, because the artifact runs on another origin and never saw it.
+
+- RUB-628: an artifact-to-artifact link, such as the Engineering Wiki linking to a source doc, now replaces the viewer instead of nesting a second header inside the artifact frame. A viewer URL loaded as a subframe gets a minimal shim that tells the parent viewer to navigate the top window (`/a/B`, Back returns to A); unanswered it stays a working "Open this artifact" link. The frame sandbox is unchanged.
 
 ### Changed
 
