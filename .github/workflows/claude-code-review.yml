@@ -97,6 +97,7 @@ jobs:
         run: echo "at=$(date -u -d '60 seconds ago' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Run Artfct PR Review
+        id: review
         uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1
         env:
           # Keep the Claude token out of the commands the reviewer runs.
@@ -224,6 +225,35 @@ jobs:
             no list of what you looked at, no alternatives, no @ mentions. A clean review
             is the heading, one sentence, and what you ran. Do not invent a finding to
             justify the review.
+
+      - name: Report Claude startup failure
+        if: ${{ failure() && steps.review.outcome == 'failure' }}
+        env:
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          messages="${EXECUTION_FILE:-$RUNNER_TEMP/claude-execution-output.json}"
+          reason='Claude Code ended before posting a review.'
+          if [[ -r "$messages" ]]; then
+            errors=$(jq -r '
+              .. | objects
+              | select((.type == "result" and .is_error == true) or (.type == "assistant" and .error != null))
+              | .result?, .error?, .errors[]?, .message.content[]?.text?
+              | strings
+            ' "$messages" 2>/dev/null || true)
+            if grep -Eqi 'invalid.oauth.token|invalid.api.key|oauth.token has expired|authentication_error|please run /login|not logged in|401 unauthorized' <<< "$errors"; then
+              reason='Claude rejected the configured credential or it expired.'
+            elif grep -Eqi 'does not have access to model|model.{0,80}not found|invalid.model|model.{0,80}not available|not_found_error' <<< "$errors"; then
+              reason='Claude rejected the requested model or the credential cannot access it.'
+            elif grep -Eqi 'rate_limit_error|rate limit reached|usage limit|hit your limit|out of extra usage' <<< "$errors"; then
+              reason='Claude reached an account usage or request limit.'
+            elif grep -Eqi 'credit balance|insufficient.balance|billing|payment required' <<< "$errors"; then
+              reason='Claude reported a billing or credit limit.'
+            elif grep -Eqi 'overloaded_error|service unavailable|internal server error' <<< "$errors"; then
+              reason='Claude reported a temporary service error.'
+            fi
+          fi
+          printf '::error::%s\n' "$reason"
 
       # A green check must mean this run posted a review of this commit.
       - name: Require a posted review
