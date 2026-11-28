@@ -1,0 +1,67 @@
+[
+  {
+    "content_type": "text/markdown; charset=utf-8",
+    "entrypoint": "index.html",
+    "render": true
+  },
+  {
+    "content_type": "TEXT/X-MARKDOWN; Charset=UTF-8",
+    "entrypoint": "index.html",
+    "render": true
+  },
+  {
+    "content_type": "Application/Markdown; charset=UTF-8",
+    "entrypoint": "index.html",
+    "render": true
+  },
+  {
+    "content_type": null,
+    "entrypoint": "README.md",
+    "render": true
+  },
+  {
+    "content_type": null,
+    "entrypoint": "docs/Guide.MarkDown",
+    "render": true
+  },
+  {
+    "content_type": "application/octet-stream",
+    "entrypoint": "README.md",
+    "render": true
+  },
+  {
+    "content_type": "application/octet-stream",
+    "entrypoint": "docs/Guide.MarkDown",
+    "render": true
+  },
+  {
+    "content_type": "text/plain",
+    "entrypoint": "README.md",
+    "render": true
+  },
+  {
+    "content_type": "TEXT/HTML; Charset=UTF-8",
+    "entrypoint": "README.md",
+    "render": false
+  },
+  {
+    "content_type": null,
+    "entrypoint": "index.html",
+    "render": false
+  },
+  {
+    "content_type": "application/octet-stream",
+    "entrypoint": "index.html",
+    "render": false
+  },
+  {
+    "content_type": "text/plain",
+    "entrypoint": "README.txt",
+    "render": false
+  },
+  {
+    "content_type": "",
+    "entrypoint": "",
+    "render": false
+  }
+]

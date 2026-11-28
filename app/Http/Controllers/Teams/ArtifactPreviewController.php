@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Teams;
 use App\Contracts\ArtifactContentSource;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Services\MarkdownRenderer;
 use App\Services\Sharing\ArtifactVisibility;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -15,7 +16,8 @@ use Throwable;
  * member can look at a secure artifact without minting a link, waiting on an
  * expiry, or needing the Worker's signing secret.
  *
- * The body is untrusted HTML the Worker stored, so it is served under the
+ * The body is untrusted content the Worker stored. Markdown is rendered
+ * before it is served as HTML, so the document is served under the
  * response's `sandbox` directive and a `default-src 'none'` policy: scripts
  * and external resources are blocked, the document cannot keep the app's
  * origin, and it cannot navigate its parent. The preview is
@@ -103,16 +105,26 @@ class ArtifactPreviewController extends Controller
             return $this->unavailable();
         }
 
-        $sanitizedHtml = $this->stripScripts($artifact['html']);
+        try {
+            $body = MarkdownRenderer::shouldRenderMarkdown($artifact['content_type'] ?? null, $artifact['entrypoint'] ?? null)
+                ? app(MarkdownRenderer::class)->toFullDocument($artifact['html'])
+                : $artifact['html'];
+        } catch (Throwable $exception) {
+            report($exception);
 
-        $response = $this->html($sanitizedHtml);
+            return $this->unavailable(503);
+        }
+
+        $body = $this->stripScripts($body);
+
+        $response = $this->html($body);
         $response->headers->set('Server-Timing', 'artifact_fetch;dur='.number_format((hrtime(true) - $fetchStartedAt) / 1_000_000, 2, '.', ''));
         $response->setEtag(hash('sha256', implode(':', [
             (string) $user->id,
             (string) $team->id,
             $artifactId,
             (string) ($artifact['version'] ?? ''),
-            $sanitizedHtml,
+            $body,
         ])), true);
         // A version query is a cache key, never authority to read old content.
         // Do not cache a newer body under a stale or speculative version URL.

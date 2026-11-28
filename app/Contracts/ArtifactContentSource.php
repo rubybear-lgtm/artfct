@@ -16,6 +16,7 @@ interface ArtifactContentSource
      *                                pass a shorter bound; the queue indexer keeps the default.
      * @return array{
      *     html: string,
+     *     content_type: ?string,
      *     tier: ?string,
      *     sharing: ?string,
      *     owner_user_id: ?string,

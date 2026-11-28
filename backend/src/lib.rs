@@ -1441,6 +1441,30 @@ mod tests {
             "text/markdown; charset=utf-8"
         );
         assert_eq!(normalized_content_type("text/markdown"), "text/markdown");
+        assert_eq!(
+            normalized_content_type("text/x-markdown"),
+            "text/x-markdown"
+        );
+        assert_eq!(
+            normalized_content_type("application/markdown; charset=utf-8"),
+            "application/markdown; charset=utf-8"
+        );
+        assert_eq!(
+            normalized_content_type("text/markdown; charset=iso-8859-1"),
+            "text/markdown; charset=iso-8859-1"
+        );
+    }
+
+    #[test]
+    fn markdown_content_type_rejects_header_controls() {
+        assert_eq!(
+            normalized_content_type("text/markdown; charset=utf-8\r\nX-Evil: yes"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            normalized_content_type("application/markdown\0"),
+            "application/octet-stream"
+        );
     }
 
     #[test]

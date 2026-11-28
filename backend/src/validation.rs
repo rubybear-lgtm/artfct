@@ -12,7 +12,20 @@ pub(crate) fn is_valid_relative_path(path: &str) -> bool {
 }
 
 pub(crate) fn normalized_content_type(value: &str) -> String {
+    if value
+        .chars()
+        .any(|character| character.is_ascii_control() && character != '\t')
+    {
+        return "application/octet-stream".to_string();
+    }
     let value = value.trim().to_ascii_lowercase();
+    let base = value.split(';').next().unwrap_or(&value).trim();
+    if matches!(
+        base,
+        "text/markdown" | "text/x-markdown" | "application/markdown"
+    ) {
+        return value;
+    }
     if matches!(
         value.as_str(),
         "text/html"

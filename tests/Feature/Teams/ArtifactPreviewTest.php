@@ -89,6 +89,119 @@ test('the_real_source_previews_public_and_secure_tiers_with_the_org_credential',
         && str_starts_with((string) ($request->header('Authorization')[0] ?? ''), 'Bearer '));
 })->with(['public', 'secure']);
 
+test('the_real_source_renders_markdown_previews_as_styled_html', function () {
+    configureOrgJwt();
+    config(['services.worker.base_url' => 'https://worker.test']);
+    app()->instance(ArtifactContentSource::class, HttpArtifactContentSource::default());
+
+    $team = Team::factory()->create(['slug' => 'markdown-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $artifactId = 'facefeedfacefeedfacefeedfacefeed';
+    $markdown = <<<'MD'
+        # Guidance
+
+        - first
+        - second
+
+        | Name | Owner |
+        | --- | --- |
+        | Preview | Lin |
+
+        ~~retired~~
+
+        - [x] done
+        - [ ] todo
+
+        ```php
+        echo "styled";
+        ```
+        MD;
+
+    Http::fake(['worker.test/*' => Http::response([
+        'content' => $markdown,
+        'content_type' => 'text/markdown; charset=utf-8',
+        'entrypoint' => 'README.md',
+        'version' => 1,
+        'sharing' => 'team',
+        'tier' => 'secure',
+    ], 200)]);
+
+    $response = test()->actingAs($member)->get(artifactPreviewUrl($team, $artifactId));
+
+    $response->assertOk()
+        ->assertSee('<h1 id="guidance">Guidance</h1>', false)
+        ->assertSee('<ul>', false)
+        ->assertSee('<table>', false)
+        ->assertSee('<pre><code class="language-php">', false)
+        ->assertSee('<del>retired</del>', false)
+        ->assertSee('type="checkbox"', false)
+        ->assertDontSee('# Guidance', false)
+        ->assertDontSee('```php', false);
+    assertArtifactPreviewHeaders($response);
+
+    $expectedEtag = 'W/"'.hash('sha256', implode(':', [
+        (string) $member->id,
+        (string) $team->id,
+        $artifactId,
+        '1',
+        (string) $response->getContent(),
+    ])).'"';
+    $response->assertHeader('ETag', $expectedEtag);
+});
+
+test('html_content_with_a_markdown_entrypoint_is_served_byte_identically', function () {
+    $team = Team::factory()->create(['slug' => 'html-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $artifactId = 'facefeedfacefeedfacefeedfacefeed';
+    $html = "<!doctype html>\n<html><body><h1>Already rendered</h1></body></html>\n";
+
+    app(ArtifactContentSource::class)->seed($team->slug, $artifactId, $html, entrypoint: 'README.md', contentType: 'text/html');
+
+    $response = test()->actingAs($member)->get(artifactPreviewUrl($team, $artifactId));
+
+    $response->assertOk()->assertContent($html);
+    assertArtifactPreviewHeaders($response);
+});
+
+test('a_markdown_entrypoint_fallback_renders_a_full_document', function () {
+    $team = Team::factory()->create(['slug' => 'fallback-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $artifactId = 'facefeedfacefeedfacefeedfacefeed';
+    $markdown = "# Fallback\n\nRendered from a `.markdown` path.";
+
+    app(ArtifactContentSource::class)->seed($team->slug, $artifactId, $markdown, entrypoint: 'docs/Guide.MarkDown', contentType: 'application/octet-stream');
+
+    $response = test()->actingAs($member)->get(artifactPreviewUrl($team, $artifactId));
+
+    $response->assertOk()
+        ->assertSee('<!doctype html>', false)
+        ->assertSee('<h1 id="fallback">Fallback</h1>', false)
+        ->assertDontSee('# Fallback', false);
+    assertArtifactPreviewHeaders($response);
+});
+
+test('an_oversized_markdown_render_is_a_generic_503', function () {
+    $team = Team::factory()->create(['slug' => 'large-markdown-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $artifactId = 'facefeedfacefeedfacefeedfacefeed';
+
+    app(ArtifactContentSource::class)->seed(
+        $team->slug,
+        $artifactId,
+        str_repeat("# Heading\n", 200_000),
+        entrypoint: 'README.md',
+        contentType: 'text/markdown',
+    );
+
+    $response = test()->actingAs($member)->get(artifactPreviewUrl($team, $artifactId));
+
+    $response->assertStatus(503)->assertSee('Preview unavailable');
+    assertArtifactPreviewHeaders($response, 'no-store, private');
+    expect($response->getContent())
+        ->not->toContain('Markdown input exceeds')
+        ->not->toContain($artifactId);
+});
+
 /**
  * A preview is not an Open: it authorizes the viewer and reads the content
  * server-side, so it works even when the environment has no signing secret

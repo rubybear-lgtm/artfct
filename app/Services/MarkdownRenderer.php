@@ -9,7 +9,9 @@ use Dom\HTMLDocument;
 use Dom\Node;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use League\CommonMark\Extension\Strikethrough\StrikethroughExtension;
 use League\CommonMark\Extension\Table\TableExtension;
+use League\CommonMark\Extension\TaskList\TaskListExtension;
 use League\CommonMark\MarkdownConverter;
 
 /**
@@ -20,7 +22,21 @@ use League\CommonMark\MarkdownConverter;
  */
 final class MarkdownRenderer
 {
+    public const int MAX_INPUT_BYTES = 131_072;
+
     public const int MAX_OUTPUT_BYTES = 1_048_576;
+
+    private const int MAX_LINE_BYTES = 4_096;
+
+    private const int MAX_DELIMITER_RUN = 64;
+
+    private const int MAX_NESTING_LEVEL = 32;
+
+    private const int MAX_DELIMITERS_PER_LINE = 256;
+
+    private const int MAX_BRACKETS = 1_024;
+
+    private const int MAX_INLINE_MARKERS = 4_096;
 
     private readonly MarkdownConverter $converter;
 
@@ -29,11 +45,32 @@ final class MarkdownRenderer
         $environment = new Environment([
             'html_input' => 'strip',
             'allow_unsafe_links' => false,
+            'max_nesting_level' => self::MAX_NESTING_LEVEL,
+            'max_delimiters_per_line' => self::MAX_DELIMITERS_PER_LINE,
         ]);
         $environment->addExtension(new CommonMarkCoreExtension);
         $environment->addExtension(new TableExtension);
+        $environment->addExtension(new StrikethroughExtension);
+        $environment->addExtension(new TaskListExtension);
 
         $this->converter = new MarkdownConverter($environment);
+    }
+
+    public static function shouldRenderMarkdown(?string $contentType, ?string $entrypoint): bool
+    {
+        $mimeType = strtolower(trim(explode(';', $contentType ?? '', 2)[0]));
+
+        if ($mimeType === 'text/html') {
+            return false;
+        }
+
+        if (in_array($mimeType, ['text/markdown', 'text/x-markdown', 'application/markdown'], true)) {
+            return true;
+        }
+
+        $path = strtolower($entrypoint ?? '');
+
+        return str_ends_with($path, '.md') || str_ends_with($path, '.markdown');
     }
 
     /**
@@ -116,6 +153,8 @@ final class MarkdownRenderer
      */
     public function toFullDocument(string $markdown): string
     {
+        self::assertSafeStructure($markdown);
+
         $body = $this->toFragment($markdown);
 
         $css = $this->embeddedCss();
@@ -141,6 +180,36 @@ HTML;
         }
 
         return $html;
+    }
+
+    private static function assertSafeStructure(string $markdown): void
+    {
+        if (strlen($markdown) > self::MAX_INPUT_BYTES) {
+            throw new \RuntimeException('Markdown input exceeds 128 KB limit.');
+        }
+
+        if (substr_count($markdown, '[') > self::MAX_BRACKETS) {
+            throw new \RuntimeException('Markdown bracket count exceeds 1024.');
+        }
+
+        $inlineMarkers = 0;
+        foreach (['*', '_', '~', '`', '[', ']', '<', '>', '&', '!', '\\', '|'] as $marker) {
+            $inlineMarkers += substr_count($markdown, $marker);
+        }
+
+        if ($inlineMarkers > self::MAX_INLINE_MARKERS) {
+            throw new \RuntimeException('Markdown inline marker count exceeds 4096.');
+        }
+
+        foreach (preg_split('/\r\n|\r|\n/', $markdown) ?: [] as $line) {
+            if (strlen($line) > self::MAX_LINE_BYTES) {
+                throw new \RuntimeException('Markdown line exceeds 4 KB limit.');
+            }
+
+            if (preg_match('/([*_~`])\1{'.self::MAX_DELIMITER_RUN.',}/', $line)) {
+                throw new \RuntimeException('Markdown delimiter run exceeds 64 characters.');
+            }
+        }
     }
 
     /**

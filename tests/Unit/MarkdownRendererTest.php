@@ -8,6 +8,15 @@ beforeEach(function () {
     $this->renderer = new MarkdownRenderer;
 });
 
+it('uses the shared markdown detection contract', function () {
+    $cases = json_decode((string) file_get_contents(dirname(__DIR__).'/Fixtures/markdown-detection.json'), true, flags: JSON_THROW_ON_ERROR);
+
+    foreach ($cases as $case) {
+        expect(MarkdownRenderer::shouldRenderMarkdown($case['content_type'], $case['entrypoint']))
+            ->toBe($case['render']);
+    }
+});
+
 it('renders headings', function () {
     $html = $this->renderer->toFragment("# Hello\n\n## World\n\n### Sub");
 
@@ -87,6 +96,15 @@ MD;
     expect($html)->toContain('hello');
 });
 
+it('renders strikethrough and task lists', function () {
+    $html = $this->renderer->toFragment("~~retired~~\n\n- [x] done\n- [ ] todo");
+
+    expect($html)->toContain('<del>retired</del>')
+        ->and($html)->toContain('type="checkbox"')
+        ->and($html)->toContain('checked')
+        ->and($html)->toContain('disabled');
+});
+
 it('renders horizontal rules', function () {
     $html = $this->renderer->toFragment("before\n\n---\n\nafter");
 
@@ -162,11 +180,60 @@ it('toFullDocument includes embedded CSS', function () {
     expect($html)->toContain('font-family:');
 });
 
-it('toFullDocument throws on output exceeding limit', function () {
-    $big = str_repeat('# ', MarkdownRenderer::MAX_OUTPUT_BYTES);
+it('toFullDocument rejects oversized input before rendering', function () {
+    $big = str_repeat("# Heading\n", 200_000);
 
     expect(fn () => $this->renderer->toFullDocument($big))
-        ->toThrow(RuntimeException::class, '1 MB');
+        ->toThrow(RuntimeException::class, '128 KB');
+});
+
+it('rejects pathological delimiter runs before parsing', function () {
+    $markdown = str_repeat('*', 1_000).'x';
+
+    expect(fn () => $this->renderer->toFullDocument($markdown))
+        ->toThrow(RuntimeException::class, 'delimiter run');
+});
+
+it('rejects oversized lines before parsing', function () {
+    $markdown = str_repeat('a', 5_000);
+
+    expect(fn () => $this->renderer->toFullDocument($markdown))
+        ->toThrow(RuntimeException::class, 'line exceeds');
+});
+
+it('rejects pathological bracket nesting before parsing', function () {
+    $markdown = str_repeat(str_repeat('[', 4_095)."\n", 32);
+
+    expect(fn () => $this->renderer->toFullDocument($markdown))
+        ->toThrow(RuntimeException::class, 'bracket count');
+});
+
+it('rejects excessive inline work across a paragraph', function () {
+    $payloads = [
+        implode("\n", array_fill(0, 18, str_repeat('*_~', 1_365))),
+        implode("\n", array_fill(0, 32, str_repeat('\\', 4_095))),
+        implode("\n", array_fill(0, 32, str_repeat(']', 4_095))),
+    ];
+
+    foreach ($payloads as $markdown) {
+        expect(fn () => $this->renderer->toFullDocument($markdown))
+            ->toThrow(RuntimeException::class, 'inline marker count');
+    }
+});
+
+it('allows a delimiter run at the safety limit', function () {
+    expect($this->renderer->toFullDocument(str_repeat('*', 64)))->toContain('<hr');
+});
+
+it('rejects a delimiter run above the safety limit', function () {
+    expect(fn () => $this->renderer->toFullDocument(str_repeat('*', 65)))
+        ->toThrow(RuntimeException::class, 'delimiter run');
+});
+
+it('toFullDocument renders input at the safety limit', function () {
+    $markdown = str_repeat("# Heading\n", (int) floor(MarkdownRenderer::MAX_INPUT_BYTES / 10));
+
+    expect($this->renderer->toFullDocument($markdown))->toContain('<h1 id="heading">Heading</h1>');
 });
 
 it('preserves line breaks within paragraphs', function () {
