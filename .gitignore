@@ -38,6 +38,7 @@ yarn-error.log
 
 # Claude Code — local settings and registry-installed skills
 /.claude/settings.local.json
+/.claude/skills/artfct
 /.claude/skills/cloudflare
 /.claude/skills/durable-objects
 /.claude/skills/web-perf

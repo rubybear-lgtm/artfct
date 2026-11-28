@@ -1,12 +1,6 @@
 {
   "version": 1,
   "skills": {
-    "artfct": {
-      "source": "rubybear-lgtm/artfct",
-      "sourceType": "github",
-      "skillPath": "skills/artfct/SKILL.md",
-      "computedHash": "f534d4a6dcef99cbaab90458d39bc504dfedb76381f1269968af16cd84e486a9"
-    },
     "assistant-ui": {
       "source": "assistant-ui/skills",
       "sourceType": "github",

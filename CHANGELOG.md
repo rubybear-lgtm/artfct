@@ -33,6 +33,8 @@ Every pull request adds an entry under Unreleased and in the [Artfct Release Cha
 
 ### Changed
 
+- [#228](https://github.com/rubybear-lgtm/artfct/pull/228) (RUB-611) Removed the `artfct` entry from `skills-lock.json` and added `/.claude/skills/artfct` to `.gitignore` so `npx skills add` or lockfile restores cannot recreate an untracked `.claude/skills/artfct` symlink; the 14 plugin skills under `skills/` remain unchanged. Impact: repo tooling/ignore configuration only; no runtime change. Verification: `npm run format:check`, `npm run test:skills`, and `git ls-files -- .claude/skills/artfct` empty.
+
 - [#221](https://github.com/rubybear-lgtm/artfct/pull/221) Documented delegated approval for low-risk PRs, a release-ledger entry for every PR, and the ready-to-approve gate, in `AGENTS.md` and `CLAUDE.md`. The PR template gains release changelog, pstack verification and reviewer sections, and the release-to-production skill now waits for approval before merging and for Ruben before releasing. Impact: agents and reviewers follow one approval path, and the release owner has a record to reconcile against the candidate commit; no runtime impact. Verification: docs-only change, with required CI green at the PR head before approval.
 
 - RUB-606 / Spec 22 AC-O1: ChatGPT-reachable plan/upgrade copy reworded. `PlanGateException` no longer names a plan or says Upgrade; `ArtifactPublisher` quota message and `usage:read` consent label drop "plan limits"; `get_usage` and ChatGPT `/connect` copy drop plan/paid wording. Machine codes `plan_upgrade_required`, `quota_exceeded` and action `upgrade_plan` are unchanged.
