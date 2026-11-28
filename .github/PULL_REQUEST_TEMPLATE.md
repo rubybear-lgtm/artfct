@@ -17,6 +17,7 @@ evidence artifact. Record the commit, the command, and the exit status. Lint or
 compile alone is not verification. If there are no code changes, write: No code changes
 -->
 
+- Head SHA:
 - Behaviour exercised (journey or command):
 - Focused tests (commit + result):
 - Evidence artifact (Artfct link) or blocker:
