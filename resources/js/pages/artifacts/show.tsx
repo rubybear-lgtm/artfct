@@ -92,6 +92,14 @@ interface Freshness {
 /** The only fragments forwarded to the artifact frame: a plain anchor id. */
 const FRAME_FRAGMENT = /^#[A-Za-z0-9_.-]{1,128}$/;
 
+/**
+ * Viewer paths (`/a/{id}`, `/a/{id}/v/{n}`): when one of these loads in the
+ * frame it is always the framed-navigation shim, because the server answers
+ * every framed viewer navigation with one. Anything else same-origin in the
+ * frame (about:blank scaffolding in tests) is left alone.
+ */
+const VIEWER_PATH = /^\/a\/[^/?#]+(?:\/v\/\d+)?\/?$/;
+
 /** 45s between polls, ±10s so a fleet of open tabs does not poll in lockstep. */
 const FRESHNESS_INTERVAL_MS = 45_000;
 const FRESHNESS_JITTER_MS = 10_000;
@@ -170,6 +178,261 @@ export default function ArtifactShow({
         if (frameRef.current !== null && FRAME_FRAGMENT.test(hash)) {
             frameRef.current.src = `${frameUrl.split('#')[0]}${hash}`;
         }
+    }, [frameUrl]);
+
+    /*
+     * An artifact-to-artifact link followed inside the sandboxed frame loads
+     * the next viewer URL as a subframe (RUB-628). The server answers that
+     * framed navigation with a shim that posts its URL here, and the top
+     * window navigates itself, so one viewer replaces the other: one header,
+     * the next title, and Back returning here. The frame has no top-navigation
+     * permission and stays that way; only a message from this frame, on this
+     * origin, naming an http(s) URL on this origin, is honored. Every handled
+     * shim is acknowledged so it stops re-announcing.
+     *
+     * History edge cases (review-6092991795):
+     * - Back from B restores A with the frame still on the shim, which
+     *   re-posts and would bounce straight back to B. The shim names its own
+     *   navigation type (`via`): a restored shim reports back_forward and the
+     *   frame is reset to the clean artifact URL instead of navigating; a
+     *   fresh click reports navigate and navigates. The `via` check runs
+     *   first: a restored shim for the same path (a same-artifact fragment
+     *   link, e.g. /a/A -> /a/A#sec) must reset the frame, never assign and
+     *   reload — the reload is what trapped Back in a loop in Firefox,
+     *   where every restored same-path shim reloaded back to #sec. The
+     *   viewer's own navigation type is never consulted: it stays
+     *   back_forward for the whole life of A after Back, so it cannot tell
+     *   a restored shim from the next genuine click (a clean-frame Back has
+     *   no restored post at all, and its first click must navigate).
+     * - A same-artifact fragment link assigns a URL that differs only by its
+     *   hash, so the browser skips the reload and the frame would stay on
+     *   the shim. That case forces a server round trip; the fragment effect
+     *   then rebuilds the frame with the hash. The frame src is never reset
+     *   on the message path here: its ?token= may have expired.
+     * - A shim that posts before hydration (SSR pages) is never heard, so
+     *   the frame would sit on "Open this artifact" with no retry left. The
+     *   shim re-announces until acknowledged, and the mount check below
+     *   recovers a shim that is already in the frame (or one that never
+     *   posts): the artifact is cross-origin and unreadable, while a
+     *   same-origin /a/* URL can only be a shim, so it is honored the same
+     *   way — except a same-path recovery only resets the frame, since the
+     *   top window is already where the shim points.
+     */
+    useEffect(() => {
+        // The clean artifact URL, with the viewer's fragment when it names
+        // a plain anchor (see the fragment effect above). Never a viewer
+        // URL: resetting the frame to one would only load the shim again.
+        const cleanFrameUrl = (): string => {
+            const cleanBase = frameUrl.split('#')[0];
+            const hash = window.location.hash;
+
+            return FRAME_FRAGMENT.test(hash) ? `${cleanBase}${hash}` : frameUrl;
+        };
+
+        // Point the frame back at the clean artifact URL. The shim is
+        // same-origin, so replacing it is allowed; the artifact itself is
+        // cross-origin and is never touched (this runs only for shims).
+        const resetFrameToClean = (): void => {
+            const frame = frameRef.current;
+
+            if (frame?.contentWindow) {
+                frame.contentWindow.location.replace(cleanFrameUrl());
+            }
+        };
+
+        // Tell the shim its post was handled so it stops re-announcing.
+        const ackFrame = (): void => {
+            try {
+                frameRef.current?.contentWindow?.postMessage(
+                    { type: 'artfct:ack' },
+                    window.location.origin,
+                );
+            } catch {
+                // The frame is gone or cross-origin: nothing to acknowledge.
+            }
+        };
+
+        const handleShimNavigation = (url: string, via: string): void => {
+            let target: URL;
+
+            try {
+                target = new URL(url, window.location.origin);
+            } catch {
+                return;
+            }
+
+            if (target.origin !== window.location.origin) {
+                return;
+            }
+
+            if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+                return;
+            }
+
+            // A restored shim first: resetting the frame is the only correct
+            // answer on every path, including the same path (see above).
+            if (via === 'back_forward') {
+                resetFrameToClean();
+                ackFrame();
+
+                return;
+            }
+
+            const current = new URL(window.location.href);
+
+            if (
+                target.pathname === current.pathname &&
+                target.search === current.search
+            ) {
+                ackFrame();
+                window.location.assign(target.href);
+                window.location.reload();
+
+                return;
+            }
+
+            ackFrame();
+            window.location.assign(target.href);
+        };
+
+        const onMessage = (event: MessageEvent) => {
+            if (event.origin !== window.location.origin) {
+                return;
+            }
+
+            if (event.source !== frameRef.current?.contentWindow) {
+                return;
+            }
+
+            const data = event.data as {
+                type?: unknown;
+                url?: unknown;
+                via?: unknown;
+            } | null;
+
+            if (data === null || typeof data !== 'object') {
+                return;
+            }
+
+            if (
+                data.type !== 'artfct:navigate' ||
+                typeof data.url !== 'string'
+            ) {
+                return;
+            }
+
+            // A message without `via` (an older shim, or a synthetic post in
+            // tests) is treated as a new click and navigates: after a
+            // clean-frame Back there is no restored post at all, so the next
+            // genuine click must never be swallowed.
+            handleShimNavigation(
+                data.url,
+                typeof data.via === 'string' ? data.via : '',
+            );
+        };
+
+        // A viewer URL in the frame is always a shim: the server answers
+        // every framed viewer navigation with one. The artifact itself is
+        // cross-origin, so reading its location throws and it is left alone.
+        const readShimFrame = (): { href: string; via: string } | null => {
+            const frameWindow = frameRef.current?.contentWindow;
+
+            if (!frameWindow) {
+                return null;
+            }
+
+            let href: string;
+
+            try {
+                href = frameWindow.location.href;
+            } catch {
+                return null;
+            }
+
+            let target: URL;
+
+            try {
+                target = new URL(href);
+            } catch {
+                return null;
+            }
+
+            if (target.origin !== window.location.origin) {
+                return null;
+            }
+
+            if (!VIEWER_PATH.test(target.pathname)) {
+                return null;
+            }
+
+            let via = '';
+
+            try {
+                const entries =
+                    frameWindow.performance.getEntriesByType('navigation');
+                via =
+                    (entries[0] as PerformanceNavigationTiming | undefined)
+                        ?.type ?? '';
+            } catch {
+                via = '';
+            }
+
+            return { href: target.href, via };
+        };
+
+        // Mount-time (and frame-load) recovery for shims the listener never
+        // heard: posted before hydration, or never posted at all. A restored
+        // shim resets the frame; a fresh shim whose post was lost is honored
+        // — except on the same path, where the top window is already there
+        // and only the frame needs resetting.
+        const recoverShimFrame = (): void => {
+            const shim = readShimFrame();
+
+            if (!shim) {
+                return;
+            }
+
+            if (shim.via === 'back_forward') {
+                resetFrameToClean();
+                ackFrame();
+
+                return;
+            }
+
+            let target: URL;
+
+            try {
+                target = new URL(shim.href);
+            } catch {
+                return;
+            }
+
+            const current = new URL(window.location.href);
+
+            if (
+                target.pathname === current.pathname &&
+                target.search === current.search
+            ) {
+                resetFrameToClean();
+                ackFrame();
+
+                return;
+            }
+
+            ackFrame();
+            window.location.assign(target.href);
+        };
+
+        window.addEventListener('message', onMessage);
+        recoverShimFrame();
+
+        const frame = frameRef.current;
+        frame?.addEventListener('load', recoverShimFrame);
+
+        return () => {
+            window.removeEventListener('message', onMessage);
+            frame?.removeEventListener('load', recoverShimFrame);
+        };
     }, [frameUrl]);
 
     useEffect(() => {
