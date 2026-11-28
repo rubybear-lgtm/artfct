@@ -1,4 +1,4 @@
-name: Claude Code Review
+name: Artfct PR Review
 
 on:
   pull_request:
@@ -96,7 +96,7 @@ jobs:
         id: start
         run: echo "at=$(date -u -d '60 seconds ago' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      - name: Run Claude Code Review
+      - name: Run Artfct PR Review
         uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1
         env:
           # Keep the Claude token out of the commands the reviewer runs.
@@ -111,7 +111,7 @@ jobs:
             --allowedTools "Bash,Read,Write,Edit,Grep,Glob,Agent"
             --disallowedTools "Bash(git push:*),Bash(gh pr merge:*),Bash(dangerouslyDisableSandbox:true)"
           prompt: |
-            Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+            You are Artfct PR Review. Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
 
             Base branch: ${{ github.event.pull_request.base.ref }}
             Base commit: ${{ github.event.pull_request.base.sha }}
@@ -125,13 +125,16 @@ jobs:
 
             ## What to do
 
-            Review this head commit in full, even if you or anyone else reviewed an
-            earlier one. Read earlier reviews and review comments first. Do not repeat a
-            finding that is already posted; say whether it is fixed or still open. An
-            earlier "no issues found" is not evidence of anything.
+            Read the PR description and previous reviews and inline threads first.
+            On the first review, read `git diff BASE...HEAD` in full, using the commits
+            above. On a follow-up, review the changes since your latest reviewed head
+            and recheck material open findings. Use a full review if the previous
+            reviewed head cannot be identified or is not an ancestor of HEAD, or if
+            the update materially changes scope or risk. Recheck any affected earlier
+            conclusions and summarize which material findings were fixed or remain
+            open without reposting their inline comments.
 
-            1. Read the diff from the merge base (`git diff BASE...HEAD`, using the
-               commits above) and the pull request description.
+            1. Check the changed behavior against the PR description and base.
             2. Read beyond the diff: callers, consumers of changed output, limits and
                filters elsewhere that new values must pass through, and which code path
                actually runs in production. A change that only tests call matters less
@@ -149,9 +152,13 @@ jobs:
                changes, and the independent review required for big pull requests.
                Check claims in the description against the code and CI.
 
-            Do not report style nitpicks or anything a linter or CI already catches.
-            Report only what you can support. If you could not verify a suspicion,
-            either drop it or label it unverified and say what would settle it.
+            Report only findings with a concrete, material consequence and evidence
+            that ties it to this PR. That includes a regression, a misleading contract
+            implementers will rely on, or a violation of an applicable repo requirement.
+            Drop style nits, optional cleanups, unrelated existing issues, and issues
+            already caught by CI or a linter. A stand-in probe supports only what it
+            demonstrates. If an important behavior remains unverified, state the
+            verification gap without presenting the suspected failure as a finding.
 
             ## How to report
 
@@ -162,14 +169,22 @@ jobs:
             Inline comments must sit on lines that appear in the diff; put anything else
             in the body.
 
-            Label each finding Blocking, Should fix, or Optional, most severe first.
-            Each one states the concrete input or state, what goes wrong, the evidence
-            (output or measured numbers), and a suggested fix.
+            Start the review body with exactly one of these lines:
+
+            - `## Artfct PR Review — Approve` when the evidence supports proceeding.
+            - `## Artfct PR Review — Request changes` when a material finding needs
+              fixing or a specific missing check prevents a recommendation to proceed.
+            - `## Artfct PR Review — Deny` when the approach itself should be abandoned
+              because a localized fix cannot address a demonstrated material problem.
+
+            Give one sentence explaining the recommendation. It is advisory and the
+            GitHub review event is always COMMENT. Put the most severe findings first.
+            For each, state the concrete input or state, consequence, evidence and
+            suggested fix.
 
             End the body with a "What I checked" section listing the commands and probes
-            you actually ran and anything you did not verify. If you found nothing, still
-            post the review with that section. Never say something was checked if you did
-            not check it. Do not use @ mentions.
+            you actually ran and any material verification gaps. Keep clean reviews
+            and clean follow-ups brief. Do not use @ mentions.
 
       # A green check must mean this run posted a review of this commit.
       - name: Require a posted review
