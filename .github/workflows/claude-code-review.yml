@@ -9,7 +9,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  claude-review:
+  claude:
+    name: Claude advisory provider
     # The reviewer runs the pull request's code in a job that holds the Claude
     # token. Forks, bots and drafts are skipped, but this is not a sandbox:
     # anyone who can push a branch here can change this job or the code it runs,
@@ -19,11 +20,13 @@ jobs:
       github.event.pull_request.user.type != 'Bot' &&
       !github.event.pull_request.draft
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 35
+    continue-on-error: ${{ vars.ARTFCT_REVIEW_PROVIDER != 'claude' }}
+    outputs:
+      started_at: ${{ steps.start.outputs.at }}
     # Claude posts with this job's token. It cannot push or merge.
     permissions:
       contents: read
-      id-token: write
       pull-requests: write
       issues: read
       # To check the description's claims against CI results.
@@ -31,6 +34,11 @@ jobs:
       actions: read
 
     steps:
+      # Backdated a minute: the review's timestamp comes from GitHub's clock.
+      - name: Note the review start time
+        id: start
+        run: echo "at=$(date -u -d '60 seconds ago' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout pull request head
         if: vars.ARTFCT_REVIEW_PROVIDER != 'opencode'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -100,15 +108,9 @@ jobs:
           # Absent on some kernels, where there is nothing to relax.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
-      # Backdated a minute: the review's timestamp comes from GitHub's clock.
-      - name: Note the review start time
-        id: start
-        run: echo "at=$(date -u -d '60 seconds ago' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-
       - name: Run Artfct PR Review
         id: review
         if: vars.ARTFCT_REVIEW_PROVIDER != 'opencode'
-        continue-on-error: true
         timeout-minutes: 28
         uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1
         env:
@@ -239,7 +241,7 @@ jobs:
             justify the review.
 
       - name: Report Claude startup failure
-        if: steps.review.outcome == 'failure'
+        if: failure() && steps.review.outcome == 'failure'
         env:
           EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
         run: |
@@ -267,14 +269,26 @@ jobs:
           fi
           printf '::warning::%s\n' "$reason"
 
+  opencode-advisory:
+    name: OpenCode advisory provider
+    needs: claude
+    if: >-
+      !cancelled() && needs.claude.outputs.started_at != '' &&
+      vars.ARTFCT_REVIEW_PROVIDER != 'claude'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
       - name: Post OpenCode advisory review if needed
-        if: vars.ARTFCT_REVIEW_PROVIDER != 'claude'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          STARTED_AT: ${{ steps.start.outputs.at }}
+          STARTED_AT: ${{ needs.claude.outputs.started_at }}
           REVIEW_MODEL: ${{ vars.ARTFCT_OPENCODE_REVIEW_MODEL || 'opencode-go/deepseek-v4.1-flash' }}
           CLIENT_ID: sk_d6234f5f-8c41-48f6-8178-59939edf8674
           OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny"}}'
@@ -352,7 +366,13 @@ jobs:
               exit 1
             fi
           done
-          IFS= read -r heading < body.md || true
+          awk '
+            { sub(/\r$/, "") }
+            !started && /^[[:space:]]*$/ { next }
+            !started { sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); started=1 }
+            { print }
+          ' body.md > normalized.md
+          IFS= read -r heading < normalized.md || true
           case "$heading" in
             '## Artfct PR Review — Approve'|'## Artfct PR Review — Request changes'|'## Artfct PR Review — Deny') ;;
             *) echo '::error::OpenCode did not return a valid advisory heading.'; exit 1 ;;
@@ -362,19 +382,27 @@ jobs:
             echo '::error::The PR head changed before the advisory review could be posted.'
             exit 1
           fi
-          sed 's/@/＠/g' body.md > advisory.md
+          sed 's/@/＠/g' normalized.md > advisory.md
           printf '\n_Provider: OpenCode (`%s`)._\n' "$REVIEW_MODEL" >> advisory.md
           jq -n --arg head "$HEAD_SHA" --rawfile body advisory.md \
             '{commit_id:$head,event:"COMMENT",body:$body}' > review.json
           gh api "$endpoint/reviews" --input review.json --jq '.html_url'
 
-      # A green check must mean this run posted a review of this commit.
+  # Preserve the repo's existing check name and require a review on this exact head.
+  claude-review:
+    needs: [claude, opencode-advisory]
+    if: ${{ !cancelled() && needs.claude.outputs.started_at != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      pull-requests: read
+    steps:
       - name: Require a posted review
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          STARTED_AT: ${{ steps.start.outputs.at }}
+          STARTED_AT: ${{ needs.claude.outputs.started_at }}
         run: |
           reviews=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" --paginate \
             --jq '.[] | select(.commit_id == env.HEAD_SHA and .user.login == "github-actions[bot]"
