@@ -112,8 +112,8 @@ jobs:
               local reason='OpenCode did not return a complete review.'
               if grep -qi 'free usage limit reached' review.log review.jsonl; then
                 reason='OpenCode reported that the free model usage limit was reached.'
-              elif grep -Eqi 'insufficient (credits|balance)|out of credits|payment required|billing limit' review.log review.jsonl; then
-                reason='OpenCode reported a billing or credit limit.'
+              elif billing_reason=$(grep -Eiohm1 'insufficient (credits|balance)|out of credits|payment required|billing limit' review.log review.jsonl); then
+                reason="OpenCode reported: ${billing_reason%%$'\n'*}."
               elif grep -Eqi 'unauthorized|invalid (token|api key)|authentication failed|forbidden|not entitled' review.log review.jsonl; then
                 reason='OpenCode rejected the inference credentials or model access.'
               elif [[ "$result" == 124 || "$result" == 137 ]]; then
