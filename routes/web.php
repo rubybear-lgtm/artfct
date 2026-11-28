@@ -116,6 +116,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('a/{artifactId}/sharing', [ArtifactViewerController::class, 'updateSharing'])->name('artifacts.sharing.update');
     Route::post('a/{artifactId}/comments', [ArtifactViewerController::class, 'storeComment'])->middleware('throttle:artifact-comment-store')->name('artifacts.comments.store');
     Route::patch('a/{artifactId}/comments/{commentId}', [ArtifactViewerController::class, 'resolveComment'])->whereNumber('commentId')->middleware('throttle:artifact-comment-resolve')->name('artifacts.comments.resolve');
+    Route::get('a/{artifactId}/open', [ArtifactViewerController::class, 'open'])->name('artifacts.open');
     Route::get('a/{artifactId}/download', [ArtifactViewerController::class, 'download'])->name('artifacts.download');
     Route::get('a/{artifactId}/download.html', [ArtifactViewerController::class, 'downloadHtml'])->name('artifacts.download.html');
     Route::get('a/{artifactId}/download-handoff.zip', [ArtifactViewerController::class, 'downloadHandoff'])->name('artifacts.download.handoff');

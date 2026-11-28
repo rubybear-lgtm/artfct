@@ -258,30 +258,15 @@ final class ArtifactViewerController extends Controller
         $request->attributes->set('feature_team', $team);
 
         $sharing = $artifact['sharing'] ?? null;
-        $links = ArtifactAccessLink::default();
-
         if ($sharing === 'public') {
-            $frameUrl = $links->publicArtifactUrl($team->slug, $artifactId, $selectedVersion);
+            $frameUrl = ArtifactAccessLink::default()->publicArtifactUrl($team->slug, $artifactId, $selectedVersion);
             $openUrl = $frameUrl;
         } else {
-            $expiresAt = now()->addMinutes($links->ttlMinutes());
-            $frameUrl = $links->forArtifact($team->slug, $artifactId, $expiresAt, $selectedVersion, (string) $user->id, $user->isAdminOf($team));
-
-            abort_if($frameUrl === null, 503, 'Signed artifact links are not configured on this environment.');
-
-            // `target` carries the artifact and the expiry and nothing else:
-            // the token is a bearer credential, so it belongs in the frame URL
-            // and nowhere near an append-only row that is read back on the
-            // audit page and exported to SIEM.
-            $this->auditLogger->recordForRequest(
-                $request,
-                AuditEventType::ArtifactLinkMinted,
-                $team,
-                (string) $user->id,
-                "artifact:{$artifactId} expires:".$expiresAt->toIso8601String(),
-            );
-
-            $openUrl = $frameUrl;
+            $frameUrl = $this->mintSignedArtifactUrl($request, $user, $team, $artifactId, $selectedVersion);
+            $openUrl = route('artifacts.open', array_filter([
+                'artifactId' => $artifactId,
+                'version' => $selectedVersion,
+            ], fn (mixed $value): bool => $value !== null));
         }
 
         $versionCount = (int) ($artifact['version_count'] ?? 1);
@@ -547,6 +532,64 @@ final class ArtifactViewerController extends Controller
         ])->save();
 
         return redirect()->route('artifacts.show', ['artifactId' => $artifactId]);
+    }
+
+    /**
+     * Open one artifact standalone on its isolated origin, minting a fresh
+     * signed link on click so a viewer tab open past the frame TTL still works
+     * and bearer tokens stay out of render-time viewer links.
+     */
+    public function open(Request $request, string $artifactId, ArtifactDirectory $artifacts): RedirectResponse
+    {
+        abort_unless(ArtifactIdShape::isPermanent($artifactId), 404);
+
+        $selectedVersion = $this->selectedVersion($request);
+        $user = $request->user();
+        [$team, $artifact] = $this->resolveArtifact($user, $artifactId, $artifacts);
+
+        Gate::authorize('view', $team);
+
+        $url = ($artifact['sharing'] ?? null) === 'public'
+            ? ArtifactAccessLink::default()->publicArtifactUrl($team->slug, $artifactId, $selectedVersion)
+            : $this->mintSignedArtifactUrl($request, $user, $team, $artifactId, $selectedVersion);
+
+        return redirect()
+            ->away($url)
+            ->header('Cache-Control', 'no-store')
+            ->header('Pragma', 'no-cache')
+            ->header('Referrer-Policy', 'no-referrer');
+    }
+
+    /**
+     * Mint a short-lived signed isolated-origin URL for one member's click or
+     * viewer load, auditing the mint without recording the bearer token.
+     */
+    private function mintSignedArtifactUrl(
+        Request $request,
+        User $user,
+        Team $team,
+        string $artifactId,
+        ?int $selectedVersion,
+    ): string {
+        $links = ArtifactAccessLink::default();
+        $expiresAt = now()->addMinutes($links->ttlMinutes());
+        $url = $links->forArtifact($team->slug, $artifactId, $expiresAt, $selectedVersion, (string) $user->id, $user->isAdminOf($team));
+
+        abort_if($url === null, 503, 'Signed artifact links are not configured on this environment.');
+
+        // `target` carries the artifact and the expiry and nothing else:
+        // the token is a bearer credential, so it belongs in the isolated-origin
+        // URL and nowhere near an append-only row that is read back on the
+        // audit page and exported to SIEM.
+        $this->auditLogger->recordForRequest(
+            $request,
+            AuditEventType::ArtifactLinkMinted,
+            $team,
+            (string) $user->id,
+            "artifact:{$artifactId} expires:".$expiresAt->toIso8601String(),
+        );
+
+        return $url;
     }
 
     /**

@@ -70,6 +70,7 @@ function notPages(): array
         'artifacts.download.html' => 'file download (standalone HTML, StandaloneHtmlDownloadTest)',
         'artifacts.download.handoff' => 'file download (handoff zip, HandoffPackDownloadTest)',
         'artifacts.freshness' => 'viewer freshness JSON poll (ArtifactViewerTest)',
+        'artifacts.open' => 'standalone artifact redirect (ArtifactViewerTest)',
         'teams.artifacts.preview' => 'sandboxed HTML preview (ArtifactPreviewBrowserTest)',
     ];
 }
