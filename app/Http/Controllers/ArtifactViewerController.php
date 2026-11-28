@@ -281,11 +281,7 @@ final class ArtifactViewerController extends Controller
                 "artifact:{$artifactId} expires:".$expiresAt->toIso8601String(),
             );
 
-            $openUrl = route('console.open', array_filter([
-                'team' => $team->slug,
-                'artifactId' => $artifactId,
-                'version' => $selectedVersion,
-            ], fn ($value): bool => $value !== null));
+            $openUrl = $frameUrl;
         }
 
         $versionCount = (int) ($artifact['version_count'] ?? 1);

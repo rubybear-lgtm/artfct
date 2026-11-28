@@ -101,15 +101,15 @@ test('free_admin_gets_plan_required_when_creating_a_bot', function () {
 });
 
 test('inertia_shares_entitlements_and_nav_per_plan_and_role', function () {
-    // plan, role, tier, expectAdminNav, expectBotsLocked, expectMembersLocked
+    // plan, role, tier, expectAdminNav, expectBotsLocked, expectManageMembers
     $cases = [
-        [Plan::Free, TeamRole::Admin, 'free', true, true, true],
-        [Plan::Pro, TeamRole::Admin, 'pro', true, false, true],
-        [Plan::Team, TeamRole::Admin, 'team', true, false, false],
-        [Plan::Team, TeamRole::Member, 'team', false, false, false],
+        [Plan::Free, TeamRole::Admin, 'free', true, true, false],
+        [Plan::Pro, TeamRole::Admin, 'pro', true, false, false],
+        [Plan::Team, TeamRole::Admin, 'team', true, false, true],
+        [Plan::Team, TeamRole::Member, 'team', false, false, true],
     ];
 
-    foreach ($cases as [$plan, $role, $tier, $expectAdminNav, $expectBotsLocked, $expectMembersLocked]) {
+    foreach ($cases as [$plan, $role, $tier, $expectAdminNav, $expectBotsLocked, $expectManageMembers]) {
         $team = Team::factory()->create([
             'plan' => $plan,
             'slug' => 'nav-'.$tier.'-'.$role->value.'-'.uniqid(),
@@ -124,9 +124,10 @@ test('inertia_shares_entitlements_and_nav_per_plan_and_role', function () {
                 ->where('entitlements.planTier', $tier)
                 ->where('entitlements.isAdmin', $expectAdminNav)
                 ->where('entitlements.capabilities.view_admin', $expectAdminNav)
+                ->where('entitlements.capabilities.manage_members', $expectManageMembers)
                 ->where('entitlements.capabilities.use_bots', $plan !== Plan::Free && $role !== TeamRole::Viewer)
                 ->has('entitlements.nav')
-                ->where('entitlements.nav', function ($nav) use ($expectAdminNav, $expectBotsLocked, $expectMembersLocked, $role) {
+                ->where('entitlements.nav', function ($nav) use ($expectAdminNav, $expectBotsLocked, $role) {
                     $items = collect($nav);
                     $admin = $items->firstWhere('key', 'admin');
                     $bots = $items->firstWhere('key', 'bots');
@@ -136,7 +137,7 @@ test('inertia_shares_entitlements_and_nav_per_plan_and_role', function () {
                     if ($expectAdminNav) {
                         expect($admin)->not->toBeNull()
                             ->and($billing)->not->toBeNull()
-                            ->and($members['locked'] ?? null)->toBe($expectMembersLocked)
+                            ->and($members['locked'] ?? null)->toBeFalse()
                             ->and($bots['locked'] ?? null)->toBe($expectBotsLocked);
                     } else {
                         expect($admin)->toBeNull()

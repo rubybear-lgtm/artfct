@@ -85,7 +85,7 @@ Route::get('/robots.txt', RobotsController::class)->name('robots');
 // the closest live page so the 4xx report clears without inventing pages.
 // GET-only, same shape as the retired blog redirect above, so the isolation
 // matrix keys them as ordinary public GETs.
-Route::get('/pricing', fn () => redirect('/', 301));
+Route::get('/pricing', fn () => redirect('/#plans', 301));
 // The free tool page was removed; links to it land on the home page.
 Route::get('/free', fn () => redirect('/', 301));
 Route::get('/signup', fn () => redirect('/login?screen_hint=sign-up', 301));

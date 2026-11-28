@@ -76,13 +76,13 @@ test('console_open_control_opens_the_signed_link_route_in_a_new_tab', function (
     $page = visit(consoleUrl($team))
         ->assertNoJavaScriptErrors()
         ->assertSee('RUB367 report')
-        // The href points at the open action, never at a token.
-        ->assertAttributeContains('@open-artifact', 'href', '/open')
+        // The href points directly to the short viewer link, never at a token.
+        ->assertAttributeContains('@open-artifact', 'href', '/a/'.ARTIFACT_LINK_ID)
         ->assertAttributeDoesntContain('@open-artifact', 'href', 'token=')
         ->assertAttribute('@open-artifact', 'target', '_blank')
         // The title is the same control, not decoration: opening an artifact
         // from its row's name is the interaction a reader reaches for first.
-        ->assertAttributeContains('@open-artifact-title', 'href', '/open')
+        ->assertAttributeContains('@open-artifact-title', 'href', '/a/'.ARTIFACT_LINK_ID)
         ->assertAttributeDoesntContain('@open-artifact-title', 'href', 'token=')
         ->assertAttribute('@open-artifact-title', 'target', '_blank');
 
@@ -108,8 +108,7 @@ test('console_open_control_opens_the_signed_link_route_in_a_new_tab', function (
 
     expect($targets)->toHaveCount(1)
         ->and($targets[0][1])->toBe('_blank')
-        ->and($targets[0][0])->toContain('/settings/teams/'.$team->slug.'/console/artifacts/')
-        ->and($targets[0][0])->toEndWith('/open')
+        ->and($targets[0][0])->toEndWith('/a/'.ARTIFACT_LINK_ID)
         ->and($targets[0][0])->not->toContain('token');
 });
 
@@ -128,16 +127,16 @@ test('following_the_console_open_link_reaches_the_public_artifact_url_without_a_
 
     $page = visit(consoleUrl($team))->assertNoJavaScriptErrors();
 
-    // RUB-439: the console's open link lands on the short viewer link for
-    // every sharing level. A public artifact needs no token, so none is minted
-    // and none appears in the URL.
+    // RUB-633: the console's open link goes directly to the short viewer link
+    // `/a/<id>`. A public artifact needs no token, so none is minted and none
+    // appears in the URL.
     $harness = (string) config('app.url');
 
     expect($harness)->toStartWith('http://127.0.0.1');
 
     $href = $page->attribute('@open-artifact-title', 'href');
 
-    expect($href)->toEndWith('/open');
+    expect($href)->toEndWith('/a/'.ARTIFACT_LINK_ID);
 
     $page->navigate($href)
         ->assertNoJavaScriptErrors()

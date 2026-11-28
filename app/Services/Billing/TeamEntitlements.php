@@ -213,15 +213,15 @@ final class TeamEntitlements
             ];
         }
 
-        // Members / invites: Team+ unlocked; Free/Pro locked for admins (upgrade prompt).
+        // Members / invites: admins can always open Members & team settings
+        // (inviting extra human teammates is gated inside the page on Team+).
         if ($isAdmin) {
-            $membersUnlocked = $capabilities[self::MANAGE_MEMBERS];
             $items[] = [
                 'key' => 'members',
                 'visible' => true,
-                'locked' => ! $membersUnlocked,
+                'locked' => false,
                 'label' => 'Members',
-                'reason' => $membersUnlocked ? null : 'Upgrade to Team to invite teammates.',
+                'reason' => null,
             ];
         } elseif ($capabilities[self::VIEW_MEMBERS]) {
             $items[] = [

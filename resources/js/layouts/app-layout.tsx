@@ -538,7 +538,14 @@ export default function AppLayout({
                 {team && (
                     <nav
                         aria-label="Primary"
-                        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto"
+                        className={cn(
+                            'flex flex-col gap-0.5',
+                            features?.['unified-rail'] === true &&
+                                !collapsed &&
+                                railContext
+                                ? 'shrink-0'
+                                : 'min-h-0 flex-1 overflow-y-auto',
+                        )}
                     >
                         {sidebarLink({
                             key: 'dashboard',
@@ -756,16 +763,18 @@ export default function AppLayout({
                         ) : null}
                     </nav>
                 )}
-                {features?.['unified-rail'] === true && railContext ? (
+                {features?.['unified-rail'] === true &&
+                !collapsed &&
+                railContext ? (
                     <div
                         data-testid="rail-context"
-                        className="min-h-0 overflow-y-auto border-t border-border pt-3"
+                        className="min-h-0 flex-1 overflow-y-auto border-t border-border pt-3 pb-2"
                     >
                         {railContext}
                     </div>
                 ) : null}
 
-                <div className="mt-auto flex flex-col gap-2 border-t border-border pt-3">
+                <div className="mt-auto flex shrink-0 flex-col gap-2 border-t border-border pt-3">
                     <div
                         className={cn(
                             'flex items-center justify-between px-1',
@@ -837,7 +846,7 @@ export default function AppLayout({
                                 <DropdownMenuItem
                                     onSelect={() => router.visit(docs.url())}
                                 >
-                                    Documentation
+                                    Docs
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                     onSelect={() => router.visit(blog.url())}
@@ -1018,7 +1027,7 @@ export default function AppLayout({
                                                 onClick={closeMenu}
                                                 className="flex min-h-[44px] items-center text-[15px] font-medium"
                                             >
-                                                Documentation
+                                                Docs
                                             </Link>
                                             <Link
                                                 href={blog.url()}
@@ -1136,7 +1145,7 @@ export default function AppLayout({
                                 className="transition-colors hover:text-foreground"
                                 href={docs.url()}
                             >
-                                Documentation
+                                Docs
                             </Link>
                             <Link
                                 className="transition-colors hover:text-foreground"

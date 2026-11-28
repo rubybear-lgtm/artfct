@@ -38,6 +38,19 @@ final class IdentityResolver
                 return [$identity->user, false];
             }
 
+            if ($profile->provider !== 'unknown') {
+                $legacyIdentity = ExternalIdentity::query()
+                    ->where('provider', 'unknown')
+                    ->where('external_id', $profile->externalId)
+                    ->first();
+
+                if ($legacyIdentity) {
+                    $legacyIdentity->forceFill(['provider' => $profile->provider])->save();
+
+                    return [$legacyIdentity->user, false];
+                }
+            }
+
             $user = $profile->emailVerified
                 ? User::query()->where('email', $profile->email)->first()
                 : null;

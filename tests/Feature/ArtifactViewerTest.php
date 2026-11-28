@@ -207,8 +207,9 @@ test('a_version_query_is_framed_at_that_exact_version', function () {
         'https://version-team--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/v:2/?token=',
     );
 
-    // The version the picker names is carried into the open-in-new-tab route.
-    expect($props['openUrl'])->toContain('version=2');
+    // The version the picker names is carried directly into the standalone open URL.
+    expect($props['openUrl'])->toBe($props['frameUrl'])
+        ->and($props['openUrl'])->toContain('/v:2/');
 });
 
 test('a_malformed_version_query_is_refused_rather_than_framed', function () {

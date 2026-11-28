@@ -132,8 +132,11 @@ test('long_team_artifact_member_and_domain_content_fits_at_320px', function () {
 
     $page = visit(route('teams.edit', $team))->resize(320, 800);
     assertNarrowPageFits($page);
-    $page->assertSee('a-very-long-email-address-for-a-teammate')
-        ->assertSee('another-long-label');
+    $page->assertSee('a-very-long-email-address-for-a-teammate');
+
+    $page = visit(route('teams.authentication.show', $team))->resize(320, 800);
+    assertNarrowPageFits($page);
+    $page->assertSee('another-long-label');
 
     $page = visit(route('dashboard', $team))->resize(320, 800);
     assertNarrowPageFits($page);

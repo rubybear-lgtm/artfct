@@ -147,3 +147,32 @@ test('team_plan_export_is_refused', function () {
 
     test()->actingAs($admin)->get(route('teams.audit.export', $team))->assertForbidden();
 });
+
+test('the_person_picker_disambiguates_duplicate_names_without_duplicate_options', function () {
+    $team = Team::factory()->create();
+    $humanHoku = User::factory()->create(['name' => 'Hoku', 'email' => 'hoku@acme.test']);
+    $team->memberships()->create(['user_id' => $humanHoku->id, 'role' => TeamRole::Admin]);
+    $botHoku = User::factory()->bot()->create(['name' => 'Hoku', 'email' => 'hoku-bot@acme.internal']);
+    $team->memberships()->create(['user_id' => $botHoku->id, 'role' => TeamRole::Member]);
+    $secondBotHoku = User::factory()->bot()->create(['name' => 'Hoku', 'email' => 'hoku-bot-2@acme.internal']);
+    $team->memberships()->create(['user_id' => $secondBotHoku->id, 'role' => TeamRole::Member]);
+    $otherHoku = User::factory()->create(['name' => 'Hoku', 'email' => 'hoku2@acme.test']);
+    $team->memberships()->create(['user_id' => $otherHoku->id, 'role' => TeamRole::Member]);
+
+    auditEvent($team, AuditEventType::MemberAdded, (string) $humanHoku->id);
+    auditEvent($team, AuditEventType::TokenCreated, (string) $botHoku->id);
+
+    test()->actingAs($humanHoku)->get(route('teams.audit.index', $team))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('members', 4)
+            ->where('members', function ($members) use ($botHoku, $secondBotHoku): bool {
+                $names = collect($members)->pluck('name')->all();
+
+                return count($names) === count(array_unique($names))
+                    && in_array("Hoku (bot) (#{$botHoku->id})", $names, true)
+                    && in_array("Hoku (bot) (#{$secondBotHoku->id})", $names, true)
+                    && in_array('Hoku (hoku@acme.test)', $names, true)
+                    && in_array('Hoku (hoku2@acme.test)', $names, true);
+            }));
+});

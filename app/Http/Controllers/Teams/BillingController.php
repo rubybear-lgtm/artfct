@@ -78,6 +78,7 @@ class BillingController extends Controller
                 'free' => config('billing.plans.free'),
                 'pro' => config('billing.plans.pro'),
                 'team' => config('billing.plans.team'),
+                'enterprise' => config('billing.plans.enterprise'),
             ],
             'prices' => [
                 'proMonthly' => '$5/month',

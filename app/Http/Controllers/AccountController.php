@@ -18,6 +18,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -31,7 +32,7 @@ class AccountController extends Controller
             'identities' => $user->externalIdentities()
                 ->get()
                 ->map(fn ($identity) => [
-                    'provider' => $identity->provider,
+                    'provider' => $this->providerLabel((string) $identity->provider),
                     'email' => $identity->email,
                 ])->values(),
             'teams' => $user->teams()->get()->map(function (Team $team) use ($user): array {
@@ -59,6 +60,23 @@ class AccountController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Profile updated.')]);
 
         return back();
+    }
+
+    private function providerLabel(string $provider): string
+    {
+        return match (strtolower(trim($provider))) {
+            'googleoauth', 'google' => 'Google',
+            'githuboauth', 'github' => 'GitHub',
+            'microsoftoauth', 'microsoft' => 'Microsoft',
+            'appleoauth', 'apple' => 'Apple',
+            'magicauth', 'magic_auth' => 'Email magic code',
+            'password' => 'Email & password',
+            'passkey' => 'Passkey',
+            'sso', 'polis' => 'Enterprise SSO',
+            'scim' => 'Directory sync (SCIM)',
+            'externalauth', 'authkit', 'unknown', '' => 'WorkOS AuthKit',
+            default => Str::headline($provider),
+        };
     }
 
     /**

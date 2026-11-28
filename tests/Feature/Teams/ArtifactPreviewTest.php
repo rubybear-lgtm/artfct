@@ -290,3 +290,21 @@ test('a mismatched version url cannot cache the current body under another versi
     test()->get($url.'?v=1')->assertOk()->assertHeader('Cache-Control', 'no-store, private');
     test()->get($url.'?v=3')->assertOk()->assertHeader('Cache-Control', 'no-store, private');
 });
+
+test('preview_strips_script_tags_while_keeping_sandbox_csp_and_markup', function () {
+    $team = Team::factory()->create();
+    $member = memberOfTeam($team, TeamRole::Member);
+    app(ArtifactContentSource::class)->seed(
+        $team->slug,
+        'artifact-scripted',
+        '<!doctype html><html><body><h1>Safe title</h1><script>console.log("x")</script><script src="https://cdn.example.com/a.js"></script></body></html>',
+    );
+
+    $response = test()->actingAs($member)->get(artifactPreviewUrl($team, 'artifact-scripted'));
+
+    $response->assertOk()
+        ->assertSee('<h1>Safe title</h1>', false);
+    assertArtifactPreviewHeaders($response);
+
+    expect($response->getContent())->not->toContain('<script');
+});

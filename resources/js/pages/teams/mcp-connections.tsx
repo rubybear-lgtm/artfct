@@ -126,6 +126,10 @@ export default function McpConnections({
     const transports = [
         ...new Set(connections.map((connection) => connection.transport)),
     ];
+    const activeConnectionCount = connections.filter(
+        (connection) => statusFor(connection) === 'active',
+    ).length;
+    const inactiveConnectionCount = connections.length - activeConnectionCount;
 
     const [copied, setCopied] = useState<string | null>(null);
     const [showAllTools, setShowAllTools] = useState(false);
@@ -252,7 +256,7 @@ export default function McpConnections({
                         </div>
                         <div
                             id={unifiedRail ? 'permissions' : undefined}
-                            className={`rounded-lg border border-dashed p-4 md:col-span-2 ${unifiedRail ? 'scroll-mt-20' : ''}`}
+                            className={`rounded-lg border border-dashed p-4 ${unifiedRail ? 'scroll-mt-20' : ''}`}
                         >
                             <p className="font-medium">What each tool can do</p>
                             <p className="mt-1 text-sm text-muted-foreground">
@@ -539,7 +543,10 @@ export default function McpConnections({
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card
+                    id={unifiedRail ? 'connected-tools' : undefined}
+                    className={unifiedRail ? 'scroll-mt-20' : undefined}
+                >
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Cable className="size-5" />
@@ -548,7 +555,9 @@ export default function McpConnections({
                         <CardDescription>
                             {connections.length === 0
                                 ? 'No AI tools connected yet.'
-                                : `${connections.length} connection${connections.length === 1 ? '' : 's'} registered`}
+                                : inactiveConnectionCount === 0
+                                  ? `${activeConnectionCount} active connection${activeConnectionCount === 1 ? '' : 's'}`
+                                  : `${activeConnectionCount} active · ${connections.length} total (${inactiveConnectionCount} revoked or expired)`}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -756,7 +765,10 @@ export default function McpConnections({
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card
+                    id={unifiedRail ? 'recent-activity' : undefined}
+                    className={unifiedRail ? 'scroll-mt-20' : undefined}
+                >
                     <CardHeader>
                         <CardTitle>Recent activity</CardTitle>
                         <CardDescription>
@@ -838,6 +850,8 @@ function ConnectionsRailContext() {
         { id: 'permissions', label: 'Permissions' },
         ...(usage.byTool.length > 0 ? [{ id: 'usage', label: 'Usage' }] : []),
         { id: 'manual-setup', label: 'Manual setup' },
+        { id: 'connected-tools', label: 'Connected AI tools' },
+        { id: 'recent-activity', label: 'Recent activity' },
     ];
 
     return (

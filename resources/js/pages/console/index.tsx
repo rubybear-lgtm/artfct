@@ -30,6 +30,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import AppLayout from '@/layouts/app-layout';
 import { aiToolName, AI_TOOL_NAMES } from '@/lib/ai-tools';
 import { cn } from '@/lib/utils';
+import artifactsRoutes from '@/routes/artifacts';
 import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
 
@@ -319,7 +320,7 @@ function ConsoleRailContext() {
             </div>
             <div>
                 <p className="px-2.5 text-xs font-medium text-muted-foreground">
-                    Type
+                    AI tool
                 </p>
                 <ul className="mt-1 flex flex-col gap-px">
                     <li>
@@ -564,12 +565,10 @@ export default function ConsoleIndex({
     };
 
     /**
-     * The app's own open route, never a Worker URL and never a token: the
-     * route authorizes the viewer, then either redirects a public artifact to
-     * its public URL or mints a short-lived signed link for a secure one.
+     * Direct short viewer link (`/a/<id>`), consistent with Home and Collections.
      */
     const openHref = (artifactId: string) =>
-        ConsoleController.open.url({ team: team.slug, artifactId });
+        artifactsRoutes.show.url({ artifactId });
 
     const revokedOpenTooltip =
         'This artifact is revoked, so it can no longer be opened.';
@@ -876,63 +875,65 @@ export default function ConsoleIndex({
                 </div>
             )}
 
-            {templatesReleased && templates.length > 0 && (
-                <section
-                    aria-labelledby="templates-heading"
-                    data-testid="template-list"
-                    className="mb-8 border-t border-border pt-6"
-                >
-                    <h2
-                        id="templates-heading"
-                        className="text-sm font-semibold"
+            {templatesReleased &&
+                templates.length > 0 &&
+                (!unifiedRail || templatesScope) && (
+                    <section
+                        aria-labelledby="templates-heading"
+                        data-testid="template-list"
+                        className="mb-8 border-t border-border pt-6"
                     >
-                        Templates
-                    </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        Start from a reviewed page instead of a blank one. A
-                        pull makes a new board in your library with the
-                        template&apos;s starter cards.
-                    </p>
-                    <ul className="mt-4 divide-y divide-border border-y border-border">
-                        {templates.map((template) => (
-                            <li
-                                key={template.key}
-                                data-testid={`template-row-${template.key}`}
-                                className="flex flex-col gap-3 py-4 md:flex-row md:items-start md:justify-between md:gap-6"
-                            >
-                                <div className="min-w-0 flex-1">
-                                    <p className="min-w-0 font-semibold break-words text-foreground">
-                                        {template.title}
-                                    </p>
-                                    {template.description && (
-                                        <p className="mt-0.5 min-w-0 text-sm break-words text-muted-foreground">
-                                            {template.description}
+                        <h2
+                            id="templates-heading"
+                            className="text-sm font-semibold"
+                        >
+                            Templates
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Start from a reviewed page instead of a blank one. A
+                            pull makes a new board in your library with the
+                            template&apos;s starter cards.
+                        </p>
+                        <ul className="mt-4 divide-y divide-border border-y border-border">
+                            {templates.map((template) => (
+                                <li
+                                    key={template.key}
+                                    data-testid={`template-row-${template.key}`}
+                                    className="flex flex-col gap-3 py-4 md:flex-row md:items-start md:justify-between md:gap-6"
+                                >
+                                    <div className="min-w-0 flex-1">
+                                        <p className="min-w-0 font-semibold break-words text-foreground">
+                                            {template.title}
                                         </p>
+                                        {template.description && (
+                                            <p className="mt-0.5 min-w-0 text-sm break-words text-muted-foreground">
+                                                {template.description}
+                                            </p>
+                                        )}
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            {template.available
+                                                ? 'Ready to use'
+                                                : template.unavailable_reason}
+                                        </p>
+                                    </div>
+                                    {canPullTemplates && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={!template.available}
+                                            onClick={() =>
+                                                openUseTemplate(template)
+                                            }
+                                            data-testid={`use-template-${template.key}`}
+                                        >
+                                            Use template
+                                        </Button>
                                     )}
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                        {template.available
-                                            ? 'Ready to use'
-                                            : template.unavailable_reason}
-                                    </p>
-                                </div>
-                                {canPullTemplates && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={!template.available}
-                                        onClick={() =>
-                                            openUseTemplate(template)
-                                        }
-                                        data-testid={`use-template-${template.key}`}
-                                    >
-                                        Use template
-                                    </Button>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                </section>
-            )}
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
 
             {typeFilterCapped && artifacts.length > 0 && (
                 <p

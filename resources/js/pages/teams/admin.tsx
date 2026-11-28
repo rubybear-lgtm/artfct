@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import teamRoutes from '@/routes/teams';
 import type { SharedProps } from '@/types/shared';
 
-type PlanName = 'free' | 'team' | 'enterprise';
+type PlanName = 'free' | 'pro' | 'team' | 'enterprise';
 
 interface Props {
     team: {
@@ -16,11 +16,12 @@ interface Props {
     };
     members: { total: number; admins: number };
     pendingInvitations: number;
-    connections: { active: number };
+    connections: { active: number; total?: number };
 }
 
 const PLAN_LABELS: Record<PlanName, string> = {
     free: 'Free',
+    pro: 'Pro',
     team: 'Team',
     enterprise: 'Enterprise',
 };
@@ -108,15 +109,24 @@ export default function TeamAdmin({
                     </dd>
                 </div>
                 <div>
-                    <dt className="eyebrow">Connected AI tools</dt>
+                    <dt className="eyebrow">Active AI tools</dt>
                     <dd className="mt-1 font-serif text-3xl tabular-nums">
                         {connections.active}
                     </dd>
+                    {connections.total !== undefined &&
+                        connections.total > connections.active && (
+                            <dd className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                                {connections.total} total registered
+                            </dd>
+                        )}
                 </div>
                 <div>
                     <dt className="eyebrow">Plan</dt>
-                    <dd className="mt-1 font-serif text-3xl">
-                        {PLAN_LABELS[team.plan]}
+                    <dd
+                        className="mt-1 font-serif text-3xl"
+                        data-testid="admin-kpi-plan"
+                    >
+                        {PLAN_LABELS[team.plan] ?? team.plan}
                     </dd>
                 </div>
             </dl>
@@ -133,7 +143,7 @@ export default function TeamAdmin({
                             className="group flex min-w-0 items-baseline gap-4 py-5"
                         >
                             <span className="min-w-0 flex-1">
-                                <span className="block font-medium text-foreground group-hover:text-primary">
+                                <span className="block font-medium text-foreground group-hover:text-[var(--accent)]">
                                     {destination.title}
                                 </span>
                                 <span className="mt-1 block text-sm text-muted-foreground">
@@ -142,7 +152,7 @@ export default function TeamAdmin({
                             </span>
                             <span
                                 aria-hidden="true"
-                                className="shrink-0 text-muted-foreground group-hover:text-primary"
+                                className="shrink-0 text-muted-foreground group-hover:text-[var(--accent)]"
                             >
                                 →
                             </span>

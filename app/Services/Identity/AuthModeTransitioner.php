@@ -79,9 +79,13 @@ final class AuthModeTransitioner
         }
 
         if (! $team->hasVerifiedDomain()) {
-            throw new AuthModeTransitionException(
-                "Cannot move auth_mode to [{$target->value}]: the org has no verified domain."
-            );
+            $message = match ($target) {
+                AuthMode::Dual => __('Verify a domain before enabling dual sign-in (standard sign-in or SSO).'),
+                AuthMode::Polis => __('Verify a domain before enabling SSO-only sign-in.'),
+                default => __('Verify a domain before changing sign-in mode.'),
+            };
+
+            throw new AuthModeTransitionException($message);
         }
 
         if ($target !== AuthMode::Polis) {
@@ -90,15 +94,16 @@ final class AuthModeTransitioner
 
         if (! $this->hasAdminWithPolisIdentity($team)) {
             throw new AuthModeTransitionException(
-                'Cannot move auth_mode to [polis]: no admin holds an active Polis identity — this would lock every admin out of SSO configuration.'
+                __('At least one admin must sign in with SSO before enabling SSO-only sign-in, so admins are not locked out.')
             );
         }
 
         $atRisk = $this->membersWithoutPolisIdentity($team);
         if ($atRisk->isNotEmpty() && ! $confirmed) {
             $names = $atRisk->pluck('email')->implode(', ');
+            $subject = $atRisk->count() === 1 ? 'member has' : 'members have';
             throw new AuthModeTransitionException(
-                "Cannot move auth_mode to [polis] without confirmation: {$atRisk->count()} member(s) without a Polis identity will lose access ({$names}). Pass confirmed: true to proceed."
+                __("Confirm before switching to SSO-only sign-in: {$atRisk->count()} {$subject} no SSO identity and will lose access ({$names}).")
             );
         }
     }

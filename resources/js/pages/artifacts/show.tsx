@@ -674,6 +674,7 @@ export default function ArtifactShow({
                                 href={openUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
+                                title="Open standalone in a new tab"
                                 data-testid="open-artifact"
                             >
                                 <ExternalLink className="size-3.5" /> Open
@@ -771,16 +772,18 @@ export default function ArtifactShow({
                         </p>
                     </div>
                 ) : (
-                    <iframe
-                        ref={frameRef}
-                        src={frameUrl}
-                        title={name}
-                        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-                        allow={isSlideDeck ? 'fullscreen' : undefined}
-                        referrerPolicy="no-referrer"
-                        data-testid="artifact-frame"
-                        className="h-full min-w-0 flex-1 border-0 bg-paper"
-                    />
+                    <div className="flex min-h-0 min-w-0 flex-1 bg-background dark:bg-muted/40 dark:p-2">
+                        <iframe
+                            ref={frameRef}
+                            src={frameUrl}
+                            title={name}
+                            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                            allow={isSlideDeck ? 'fullscreen' : undefined}
+                            referrerPolicy="no-referrer"
+                            data-testid="artifact-frame"
+                            className="h-full min-w-0 flex-1 border-0 bg-paper dark:rounded-lg dark:shadow-sm dark:ring-1 dark:ring-border/80"
+                        />
+                    </div>
                 )}
 
                 {panelOpen && (

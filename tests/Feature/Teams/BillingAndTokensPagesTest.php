@@ -21,7 +21,9 @@ test('billing_page_shows_plan_seats_and_limits_to_admins', function () {
             ->where('team.plan', 'free')
             ->where('canManage', true)
             ->has('limits.free.storage_bytes')
-            ->has('limits.team.storage_bytes'));
+            ->has('limits.pro.storage_bytes')
+            ->has('limits.team.storage_bytes')
+            ->has('limits.enterprise.storage_bytes'));
 });
 
 test('billing_page_is_forbidden_for_members', function () {

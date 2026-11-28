@@ -133,11 +133,59 @@ class AuditLogController extends Controller
         /** @var Collection<int, string> $ids */
         $ids = $memberIds->merge($actorIds)->map(fn (int|string $id): string => (string) $id)->unique()->values();
 
-        return collect($this->actorNames($ids))
-            ->map(fn (string $name, int|string $id): array => [
-                'id' => (string) $id,
-                'name' => $name,
-            ])
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        $users = User::query()
+            ->whereIn('id', $ids)
+            ->get(['id', 'name', 'email', 'is_bot'])
+            ->keyBy(fn (User $user): string => (string) $user->id);
+
+        $entries = $ids->map(function (string $id) use ($users): array {
+            /** @var User|null $user */
+            $user = $users->get($id);
+
+            return [
+                'id' => $id,
+                'name' => $user !== null ? $user->name : (string) __('deleted user'),
+                'email' => $user?->email,
+                'isBot' => $user?->isBot() ?? false,
+            ];
+        });
+
+        $nameCounts = $entries->countBy('name');
+
+        $labeled = $entries->map(function (array $entry) use ($nameCounts): array {
+            $label = $entry['name'];
+
+            if (($nameCounts[$label] ?? 0) > 1) {
+                if ($entry['isBot']) {
+                    $label = "{$label} (bot)";
+                } elseif (is_string($entry['email']) && $entry['email'] !== '') {
+                    $label = "{$label} ({$entry['email']})";
+                } else {
+                    $label = "{$label} (#{$entry['id']})";
+                }
+            }
+
+            return [
+                'id' => $entry['id'],
+                'name' => $label,
+            ];
+        });
+
+        $labelCounts = $labeled->countBy('name');
+
+        return $labeled
+            ->map(function (array $entry) use ($labelCounts): array {
+                if (($labelCounts[$entry['name']] ?? 0) > 1) {
+                    $entry['name'] = "{$entry['name']} (#{$entry['id']})";
+                }
+
+                return $entry;
+            })
+            ->unique('name')
             ->sortBy('name')
             ->values();
     }

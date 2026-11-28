@@ -36,7 +36,10 @@ test('the_preview_refuses_without_a_verified_domain_and_names_the_reason', funct
     Http::fake(['polis.test/*' => Http::response([])]);
 
     test()->actingAs($admin)->get(route('teams.authentication.show', $team))
-        ->assertInertia(fn (Assert $page) => $page->where('previews.polis.reason', fn ($reason) => str_contains($reason, 'no verified domain')));
+        ->assertInertia(fn (Assert $page) => $page->where('previews.polis.reason', fn ($reason) => str_contains($reason, 'Verify a domain')
+            && ! str_contains($reason, 'auth_mode')
+            && ! str_contains($reason, '[polis]')
+            && ! str_contains($reason, '[dual]')));
 });
 
 test('the_preview_lists_members_who_would_lose_access_and_never_writes', function () {
