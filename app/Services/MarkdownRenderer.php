@@ -36,7 +36,7 @@ final class MarkdownRenderer
 
     private const int MAX_BRACKETS = 1_024;
 
-    private const int MAX_INLINE_MARKERS = 4_096;
+    private const int MAX_INLINE_MARKERS_PER_LINE = 256;
 
     private readonly MarkdownConverter $converter;
 
@@ -192,15 +192,6 @@ HTML;
             throw new \RuntimeException('Markdown bracket count exceeds 1024.');
         }
 
-        $inlineMarkers = 0;
-        foreach (['*', '_', '~', '`', '[', ']', '<', '>', '&', '!', '\\', '|'] as $marker) {
-            $inlineMarkers += substr_count($markdown, $marker);
-        }
-
-        if ($inlineMarkers > self::MAX_INLINE_MARKERS) {
-            throw new \RuntimeException('Markdown inline marker count exceeds 4096.');
-        }
-
         foreach (preg_split('/\r\n|\r|\n/', $markdown) ?: [] as $line) {
             if (strlen($line) > self::MAX_LINE_BYTES) {
                 throw new \RuntimeException('Markdown line exceeds 4 KB limit.');
@@ -208,6 +199,15 @@ HTML;
 
             if (preg_match('/([*_~`])\1{'.self::MAX_DELIMITER_RUN.',}/', $line)) {
                 throw new \RuntimeException('Markdown delimiter run exceeds 64 characters.');
+            }
+
+            $inlineMarkers = 0;
+            foreach (['*', '_', '~', '`', '[', ']', '<', '>', '&', '!', '\\'] as $marker) {
+                $inlineMarkers += substr_count($line, $marker);
+            }
+
+            if ($inlineMarkers > self::MAX_INLINE_MARKERS_PER_LINE) {
+                throw new \RuntimeException('Markdown inline marker count exceeds 256 per line.');
             }
         }
     }

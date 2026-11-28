@@ -202,6 +202,52 @@ test('an_oversized_markdown_render_is_a_generic_503', function () {
         ->not->toContain($artifactId);
 });
 
+test('hostile_markdown_is_sanitized_while_code_block_script_examples_survive', function () {
+    $team = Team::factory()->create(['slug' => 'hostile-markdown-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $artifactId = 'facefeedfacefeedfacefeedfacefeed';
+    $markdown = <<<'MD'
+        # Security Check
+
+        <script>alert("xss")</script>
+        <img src=x onerror=alert(1)>
+        [bad](javascript:alert(1))
+
+        ```html
+        <script>console.log("example")</script>
+        ```
+        MD;
+
+    app(ArtifactContentSource::class)->seed($team->slug, $artifactId, $markdown, entrypoint: 'README.md', contentType: 'text/markdown');
+
+    $response = test()->actingAs($member)->get(artifactPreviewUrl($team, $artifactId));
+
+    $response->assertOk()
+        ->assertSee('<h1 id="security-check">Security Check</h1>', false)
+        ->assertSee('&lt;script&gt;console.log("example")&lt;/script&gt;', false);
+    assertArtifactPreviewHeaders($response);
+
+    expect($response->getContent())
+        ->not->toContain('<script')
+        ->not->toContain('onerror=')
+        ->not->toContain('javascript:');
+});
+
+test('null_content_type_with_a_markdown_entrypoint_renders_markdown', function () {
+    $team = Team::factory()->create(['slug' => 'null-ctype-markdown-org']);
+    $member = memberOfTeam($team, TeamRole::Member);
+    $artifactId = 'facefeedfacefeedfacefeedfacefeed';
+
+    app(ArtifactContentSource::class)->seed($team->slug, $artifactId, "# Null Content Type\n\nBody.", entrypoint: 'README.md', contentType: null);
+
+    $response = test()->actingAs($member)->get(artifactPreviewUrl($team, $artifactId));
+
+    $response->assertOk()
+        ->assertSee('<h1 id="null-content-type">Null Content Type</h1>', false)
+        ->assertDontSee('# Null Content Type', false);
+    assertArtifactPreviewHeaders($response);
+});
+
 /**
  * A preview is not an Open: it authorizes the viewer and reads the content
  * server-side, so it works even when the environment has no signing secret

@@ -27,7 +27,7 @@ final class FakeArtifactContentSource implements ArtifactContentSource
      * @param  ?list<array{path: string, sha256: string, content_type: string, size_bytes: int}>  $files
      * @param  string  $entrypoint  the bundle's entrypoint path
      */
-    public function seed(string $orgSlug, string $artifactId, string $html, array $provenance = ['agent' => null, 'repo_url' => null, 'commit_sha' => null], string $tier = 'secure', ?int $version = 1, string $sharing = 'team', ?string $ownerUserId = null, ?array $files = null, string $entrypoint = 'index.html', string $contentType = 'text/html'): void
+    public function seed(string $orgSlug, string $artifactId, string $html, array $provenance = ['agent' => null, 'repo_url' => null, 'commit_sha' => null], string $tier = 'secure', ?int $version = 1, string $sharing = 'team', ?string $ownerUserId = null, ?array $files = null, string $entrypoint = 'index.html', ?string $contentType = 'text/html'): void
     {
         $this->artifacts[$orgSlug][$artifactId] = [
             'html' => $html,

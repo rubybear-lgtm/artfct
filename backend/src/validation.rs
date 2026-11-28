@@ -12,26 +12,38 @@ pub(crate) fn is_valid_relative_path(path: &str) -> bool {
 }
 
 pub(crate) fn normalized_content_type(value: &str) -> String {
-    if value
-        .chars()
-        .any(|character| character.is_ascii_control() && character != '\t')
-    {
+    if value.len() > 128 || !value.bytes().all(|byte| (0x20..=0x7E).contains(&byte)) {
         return "application/octet-stream".to_string();
     }
     let value = value.trim().to_ascii_lowercase();
-    let base = value.split(';').next().unwrap_or(&value).trim();
+    let mut parts = value.splitn(2, ';');
+    let base = parts.next().unwrap_or(&value).trim();
     if matches!(
         base,
         "text/markdown" | "text/x-markdown" | "application/markdown"
     ) {
-        return value;
+        return match parts.next() {
+            None => base.to_string(),
+            Some(param) => {
+                let param = param.trim();
+                match param.strip_prefix("charset=") {
+                    Some(charset)
+                        if !charset.is_empty()
+                            && charset.bytes().all(|byte| {
+                                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')
+                            }) =>
+                    {
+                        format!("{base}; charset={charset}")
+                    }
+                    _ => "application/octet-stream".to_string(),
+                }
+            }
+        };
     }
     if matches!(
         value.as_str(),
         "text/html"
             | "text/html; charset=utf-8"
-            | "text/markdown"
-            | "text/markdown; charset=utf-8"
             | "text/css"
             | "text/javascript"
             | "application/javascript"

@@ -251,6 +251,7 @@ test('read_artifact fails closed when the live fetch reports no sharing', functi
         {
             return [
                 'html' => '<!doctype html><html><body><p>Changed live text with enough visible words to skip the render pass entirely here.</p></body></html>',
+                'content_type' => 'text/html',
                 'tier' => 'secure',
                 'sharing' => null,
                 'owner_user_id' => null,

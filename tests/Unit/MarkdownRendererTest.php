@@ -146,6 +146,26 @@ it('strips raw HTML by default', function () {
     expect($html)->not->toContain('alert');
 });
 
+it('neutralizes unsafe link schemes', function () {
+    $html = $this->renderer->toFragment('[js](javascript:alert(1)) and [data](data:text/html,<script>alert(1)</script>)');
+
+    expect($html)->not->toContain('javascript:')
+        ->and($html)->not->toContain('data:text/html');
+});
+
+it('renders large multi-row markdown tables under the 128 KB cap', function () {
+    $rows = ['| A | B | C | D | E |', '| --- | --- | --- | --- | --- |'];
+    for ($i = 1; $i <= 700; $i++) {
+        $rows[] = "| row{$i} | val_a | val_b | val_c | val_d |";
+    }
+    $markdown = implode("\n", $rows);
+
+    $html = $this->renderer->toFullDocument($markdown);
+
+    expect($html)->toContain('<table>')
+        ->and($html)->toContain('<td>row700</td>');
+});
+
 it('toFragment does not wrap in document', function () {
     $html = $this->renderer->toFragment('# Test');
 

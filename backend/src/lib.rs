@@ -1465,6 +1465,22 @@ mod tests {
             normalized_content_type("application/markdown\0"),
             "application/octet-stream"
         );
+        assert_eq!(
+            normalized_content_type("text/markdown;\tcharset=utf-8"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            normalized_content_type("text/markdown; charset=utf-8🚀"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            normalized_content_type("text/markdown; foo=bar"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            normalized_content_type(&format!("text/markdown; charset={}", "a".repeat(120))),
+            "application/octet-stream"
+        );
     }
 
     #[test]
