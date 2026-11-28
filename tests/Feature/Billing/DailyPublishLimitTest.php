@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\PaymentStatus;
 use App\Enums\Plan;
 use App\Enums\TeamRole;
 use App\Models\Team;
@@ -108,6 +109,176 @@ test('deploy_artifact returns quota_exceeded with reset_at when the daily user c
 
     // FakeUsage skips the Worker usage probe; only create + file upload fire.
     Http::assertSentCount(2);
+});
+
+test('identical new publish retry returns quota_exceeded before a second worker create', function () {
+    configureArtifactLinks();
+    configureSigning(testSigningKey());
+    config(['billing.plans.free.daily_publish' => ['per_user' => 1, 'per_workspace' => 100]]);
+
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    $html = '<!doctype html><title>Daily retry</title><p>same bytes</p>';
+    config(['services.worker.base_url' => 'https://worker.test']);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response([
+            'id' => ARTIFACT_LINK_ID,
+            'url' => 'https://worker.test/p/'.ARTIFACT_LINK_ID,
+            'tier' => 'secure',
+            'missing_files' => [],
+        ], 201),
+    ]);
+    app()->bind(UsageContract::class, FakeUsage::class);
+
+    $arguments = ['html' => $html];
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => $arguments],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', false)
+        ->assertJsonPath('result.structuredContent.id', ARTIFACT_LINK_ID);
+
+    $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => $arguments],
+    ])->assertOk()
+        ->assertJsonPath('result.isError', true)
+        ->assertJsonPath('result.structuredContent.code', 'quota_exceeded')
+        ->assertJsonPath('result.structuredContent.retryable', false)
+        ->assertJsonPath('result.structuredContent.next_action', 'get_usage')
+        ->assertJsonPath('result.structuredContent.scope', 'user')
+        ->assertJsonPath('result.structuredContent.limit', 1)
+        ->assertJsonPath('result.structuredContent.reset_at', app(DailyPublishLimiter::class)->resetAt()->toIso8601String());
+
+    expect(Http::recorded(fn ($request): bool => $request->method() === 'POST'
+        && str_ends_with((string) $request->url(), '/v1/artifacts')))->toHaveCount(1);
+});
+
+test('non-daily quota errors return only the base error fields', function (PaymentStatus $paymentStatus, int $storageBytes, int $artifactsThisPeriod, string $message) {
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    $team = Team::factory()->create(['plan' => Plan::Free, 'payment_status' => $paymentStatus]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    $usage = new FakeUsage;
+    app()->instance(UsageContract::class, $usage);
+    $usage->setUsage($team->slug, storageBytes: $storageBytes, artifactsThisPeriod: $artifactsThisPeriod);
+    Http::fake();
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>quota probe</p>']],
+    ])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.structuredContent'))->toBe([
+            'code' => 'quota_exceeded',
+            'retryable' => false,
+            'next_action' => 'get_usage',
+        ])
+        ->and($response->json('result.content.0.text'))->toContain($message);
+
+    $response->assertJsonMissingPath('result.content.0._meta.artfct.details');
+    Http::assertNothingSent();
+})->with([
+    'past-due payment' => [PaymentStatus::PastDue, 0, 0, 'payment is past due'],
+    'storage quota' => [PaymentStatus::Active, PHP_INT_MAX, 0, 'over its quota'],
+    'artifact-count quota' => [PaymentStatus::Active, 0, PHP_INT_MAX, 'over its quota'],
+]);
+
+test('free plan bundle above tenant ceiling returns bundle_too_large before Worker', function () {
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    app()->bind(UsageContract::class, FakeUsage::class);
+    Http::fake();
+    $ceiling = (int) config('billing.plans.free.bundle_size_ceiling_bytes');
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => [
+            'files' => [['path' => 'index.html', 'content' => str_repeat('a', $ceiling + 1)]],
+        ]],
+    ])->assertOk();
+
+    expect($ceiling)->toBe(5 * 1024 * 1024)
+        ->and($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.structuredContent'))->toBe([
+            'code' => 'bundle_too_large',
+            'retryable' => false,
+            'next_action' => 'get_usage',
+        ])
+        ->and($response->json('result.content.0.text'))->toContain("exceeds this tenant's {$ceiling}-byte ceiling");
+
+    $response->assertJsonMissingPath('result.content.0._meta.artfct.details');
+    Http::assertNothingSent();
+});
+
+test('worker quota refusal returns only the base error fields', function () {
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    app()->bind(UsageContract::class, FakeUsage::class);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response([
+            'error' => ['code' => 'quota_exceeded', 'details' => ['reason' => 'storage']],
+        ], 403),
+    ]);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>worker quota probe</p>']],
+    ])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.structuredContent'))->toBe([
+            'code' => 'quota_exceeded',
+            'retryable' => false,
+            'next_action' => 'get_usage',
+        ])
+        ->and($response->json('result.content.0.text'))->toContain('This workspace has reached a limit.');
+
+    $response->assertJsonMissingPath('result.content.0._meta.artfct.details');
+    Http::assertSentCount(1);
+});
+
+test('worker bundle refusal maps to deployment_rejected', function () {
+    configureSigning(testSigningKey());
+    config(['services.worker.base_url' => 'https://worker.test']);
+
+    $team = Team::factory()->create(['plan' => Plan::Free]);
+    $user = memberOfTeam($team, TeamRole::Admin);
+    $token = OrgJwtService::default()->mint($team, $user, TeamRole::Admin)['token'];
+    app()->bind(UsageContract::class, FakeUsage::class);
+    Http::fake([
+        'worker.test/v1/artifacts' => Http::response([
+            'error' => ['code' => 'bundle_too_large', 'details' => ['limit_bytes' => 1024]],
+        ], 413),
+    ]);
+
+    $response = $this->withToken($token)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'deploy_artifact', 'arguments' => ['html' => '<p>worker bundle probe</p>']],
+    ])->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.structuredContent'))->toBe([
+            'code' => 'deployment_rejected',
+            'retryable' => false,
+        ])
+        ->and($response->json('result.content.0.text'))->toContain('The artifact service could not accept this deployment.');
+
+    $response->assertJsonMissingPath('result.content.0._meta.artfct.details');
+    Http::assertSentCount(1);
 });
 
 test('version publish with worker 200 identical-content no-op does not burn a daily slot', function () {
