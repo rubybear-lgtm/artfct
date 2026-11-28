@@ -84,15 +84,15 @@ jobs:
           }
 
           failed=0
-          if rg -q '^(resources/(js|css|views)/|public/|tests/Browser/)' "$paths"; then
+          if grep -Eq '^(resources/(js|css|views)/|public/|tests/Browser/)' "$paths"; then
             review Frontend "${FRONTEND_MODEL:-$default_model}" \
               'user-visible regressions, accessibility, browser behavior and Inertia state' || failed=1
           fi
-          if rg -q '^(app/|backend/|config/|database/|routes/|tests/(Feature|Unit)/)' "$paths"; then
+          if grep -Eq '^(app/|backend/|config/|database/|routes/|tests/(Feature|Unit)/)' "$paths"; then
             review Backend "${BACKEND_MODEL:-$default_model}" \
               'Laravel and Worker correctness, data integrity, concurrency and API contracts' || failed=1
           fi
-          if rg -q '^(app/|backend/|config/|database/|routes/|resources/(js|views)/|scripts/|\.github/|composer\.|package(-lock)?\.|Cargo\.)' "$paths"; then
+          if grep -Eq '^(app/|backend/|config/|database/|routes/|resources/(js|views)/|scripts/|\.github/|composer\.|package(-lock)?\.|Cargo\.)' "$paths"; then
             review Security "${SECURITY_MODEL:-$default_model}" \
               'defensive static review of authorization, data exposure, trust boundaries and permissions. Explain violated invariants and remediation without exploit payloads or reproduction steps' || failed=1
           fi
