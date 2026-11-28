@@ -225,7 +225,16 @@ it('rejects pathological bracket nesting before parsing', function () {
     $markdown = str_repeat(str_repeat('[', 4_095)."\n", 32);
 
     expect(fn () => $this->renderer->toFullDocument($markdown))
-        ->toThrow(RuntimeException::class, 'bracket count');
+        ->toThrow(RuntimeException::class, 'inline marker count');
+});
+
+it('renders large multi-item task lists under the 128 KB cap', function () {
+    $markdown = str_repeat("- [ ] task item\n", 1_100);
+
+    $html = $this->renderer->toFullDocument($markdown);
+
+    expect($html)->toContain('type="checkbox"')
+        ->and(substr_count($html, 'type="checkbox"'))->toBe(1_100);
 });
 
 it('rejects excessive inline work across a paragraph', function () {

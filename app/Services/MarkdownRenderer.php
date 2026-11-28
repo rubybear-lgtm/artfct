@@ -34,8 +34,6 @@ final class MarkdownRenderer
 
     private const int MAX_DELIMITERS_PER_LINE = 256;
 
-    private const int MAX_BRACKETS = 1_024;
-
     private const int MAX_INLINE_MARKERS_PER_LINE = 256;
 
     private readonly MarkdownConverter $converter;
@@ -186,10 +184,6 @@ HTML;
     {
         if (strlen($markdown) > self::MAX_INPUT_BYTES) {
             throw new \RuntimeException('Markdown input exceeds 128 KB limit.');
-        }
-
-        if (substr_count($markdown, '[') > self::MAX_BRACKETS) {
-            throw new \RuntimeException('Markdown bracket count exceeds 1024.');
         }
 
         foreach (preg_split('/\r\n|\r|\n/', $markdown) ?: [] as $line) {
