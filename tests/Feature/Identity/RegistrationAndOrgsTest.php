@@ -219,7 +219,7 @@ test('polis_requires_admin_with_polis_identity', function () {
         $transitioner->transition($team, AuthMode::Polis);
         test()->fail('Expected AuthModeTransitionException.');
     } catch (AuthModeTransitionException $exception) {
-        expect($exception->getMessage())->toContain('admin')->toContain('Polis');
+        expect($exception->getMessage())->toContain('admin')->toContain('SSO');
     }
 
     expect($team->fresh()->auth_mode)->toBe(AuthMode::AuthKit);

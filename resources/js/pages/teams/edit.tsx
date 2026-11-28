@@ -1,12 +1,10 @@
-import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { Bot, Copy } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 
-import AuthModeController from '@/actions/App/Http/Controllers/Teams/AuthModeController';
 import TeamController from '@/actions/App/Http/Controllers/Teams/TeamController';
-import TeamDomainController from '@/actions/App/Http/Controllers/Teams/TeamDomainController';
 import TeamInvitationController from '@/actions/App/Http/Controllers/Teams/TeamInvitationController';
 import TeamMemberController from '@/actions/App/Http/Controllers/Teams/TeamMemberController';
 import TeamOwnerController from '@/actions/App/Http/Controllers/Teams/TeamOwnerController';
@@ -85,14 +83,6 @@ interface Invitation {
     url: string;
 }
 
-interface DomainRow {
-    id: number;
-    domain: string;
-    verification_token: string;
-    txt_record_name: string;
-    verified_at: string | null;
-}
-
 interface Props {
     team: {
         id: number;
@@ -116,7 +106,6 @@ interface Props {
     };
     members: Member[];
     invitations: Invitation[];
-    domains: DomainRow[];
     permissions: {
         canUpdateTeam: boolean;
         canAddMember: boolean;
@@ -139,7 +128,6 @@ export default function TeamEdit({
     viewer,
     members,
     invitations,
-    domains,
     permissions,
     availableRoles,
     canAddBot,
@@ -170,8 +158,6 @@ export default function TeamEdit({
         name: team.name,
         public_sharing_allowed: team.publicSharingAllowed,
     });
-    const domainForm = useForm({ domain: '' });
-    const authModeForm = useForm({ auth_mode: team.authMode });
     const deleteForm = useForm({ name: '' });
     const [removing, setRemoving] = useState<Member | null>(null);
     const [cancellingInvitation, setCancellingInvitation] =
@@ -196,14 +182,10 @@ export default function TeamEdit({
     );
     const { errors } = usePage<SharedProps>().props;
     // Errors already shown next to their field, so they are not repeated here.
-    const inlineErrorKeys = ['email', 'domain', 'auth_mode', 'name'];
-    const inlineMessages = [
-        inviteForm,
-        renameForm,
-        domainForm,
-        authModeForm,
-        deleteForm,
-    ].flatMap((form) => Object.values(form.errors));
+    const inlineErrorKeys = ['email', 'name'];
+    const inlineMessages = [inviteForm, renameForm, deleteForm].flatMap(
+        (form) => Object.values(form.errors),
+    );
     const pageErrors = Object.entries(errors).filter(
         ([key, message]) =>
             !inlineErrorKeys.includes(key) && !inlineMessages.includes(message),
@@ -676,11 +658,25 @@ export default function TeamEdit({
                     <CardHeader>
                         <CardTitle>Members</CardTitle>
                         <CardDescription>
-                            {members.filter((m) => !m.isBot).length} people
-                            {members.some((m) => m.isBot)
-                                ? ` and ${members.filter((m) => m.isBot).length} bots`
-                                : ''}{' '}
-                            on this team.
+                            {(() => {
+                                const humanCount = members.filter(
+                                    (m) => !m.isBot,
+                                ).length;
+                                const botCount = members.filter(
+                                    (m) => m.isBot,
+                                ).length;
+
+                                return (
+                                    <>
+                                        {humanCount}{' '}
+                                        {humanCount === 1 ? 'person' : 'people'}
+                                        {botCount > 0
+                                            ? ` and ${botCount} ${botCount === 1 ? 'bot' : 'bots'}`
+                                            : ''}{' '}
+                                        on this team.
+                                    </>
+                                );
+                            })()}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -1190,162 +1186,22 @@ export default function TeamEdit({
                 {permissions.canChangeAuthMode && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Authentication</CardTitle>
+                            <CardTitle>Sign-in and security</CardTitle>
                             <CardDescription>
-                                Verified domains and how your team signs in.
+                                Manage verified domains, SAML SSO, and how your
+                                team signs in.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="flex flex-col gap-4">
-                            {domains.map((domain) => (
-                                <div
-                                    key={domain.id}
-                                    className="min-w-0 rounded-md border border-border p-3 text-sm"
+                        <CardContent>
+                            <Button asChild variant="outline">
+                                <Link
+                                    href={teamRoutes.authentication.show.url({
+                                        team: team.slug,
+                                    })}
                                 >
-                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                        <strong className="min-w-0 break-all">
-                                            {domain.domain}
-                                        </strong>
-                                        <Badge
-                                            variant={
-                                                domain.verified_at
-                                                    ? 'success'
-                                                    : 'warning'
-                                            }
-                                        >
-                                            {domain.verified_at
-                                                ? 'verified'
-                                                : 'unverified'}
-                                        </Badge>
-                                    </div>
-                                    {!domain.verified_at && (
-                                        <>
-                                            <p className="mt-2 min-w-0 break-words text-muted-foreground">
-                                                Add a TXT record{' '}
-                                                <code className="break-all">
-                                                    {domain.txt_record_name}
-                                                </code>{' '}
-                                                ={' '}
-                                                <code className="break-all">
-                                                    {domain.verification_token}
-                                                </code>
-                                            </p>
-                                            <Button
-                                                className="mt-2"
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() =>
-                                                    router.post(
-                                                        TeamDomainController.verify.url(
-                                                            {
-                                                                team: team.slug,
-                                                                domain: domain.id,
-                                                            },
-                                                        ),
-                                                    )
-                                                }
-                                            >
-                                                Verify
-                                            </Button>
-                                        </>
-                                    )}
-                                </div>
-                            ))}
-                            <form
-                                onSubmit={(e) => {
-                                    e.preventDefault();
-                                    domainForm.post(
-                                        TeamDomainController.store.url({
-                                            team: team.slug,
-                                        }),
-                                        {
-                                            onSuccess: () => domainForm.reset(),
-                                        },
-                                    );
-                                }}
-                                className="flex items-end gap-3"
-                            >
-                                <div className="flex flex-1 flex-col gap-1.5">
-                                    <Label htmlFor="domain">Add a domain</Label>
-                                    <Input
-                                        id="domain"
-                                        name="domain"
-                                        placeholder="acme.com"
-                                        value={domainForm.data.domain}
-                                        onChange={(e) =>
-                                            domainForm.setData(
-                                                'domain',
-                                                e.target.value,
-                                            )
-                                        }
-                                    />
-                                </div>
-                                <Button
-                                    type="submit"
-                                    disabled={domainForm.processing}
-                                >
-                                    Add domain
-                                </Button>
-                            </form>
-                            {domainForm.errors.domain && (
-                                <p
-                                    role="alert"
-                                    className="text-sm text-destructive"
-                                >
-                                    {domainForm.errors.domain}
-                                </p>
-                            )}
-                            <form
-                                onSubmit={(e) => {
-                                    e.preventDefault();
-                                    authModeForm.patch(
-                                        AuthModeController.update.url({
-                                            team: team.slug,
-                                        }),
-                                    );
-                                }}
-                                className="flex items-end gap-3"
-                            >
-                                <div className="flex flex-col gap-1.5">
-                                    <Label htmlFor="auth-mode">
-                                        Sign-in mode
-                                    </Label>
-                                    <select
-                                        id="auth-mode"
-                                        name="auth_mode"
-                                        className={selectClass}
-                                        value={authModeForm.data.auth_mode}
-                                        onChange={(e) =>
-                                            authModeForm.setData(
-                                                'auth_mode',
-                                                e.target.value,
-                                            )
-                                        }
-                                    >
-                                        <option value="authkit">
-                                            Standard sign-in
-                                        </option>
-                                        <option value="dual">
-                                            Standard sign-in or SSO
-                                        </option>
-                                        <option value="polis">SSO only</option>
-                                    </select>
-                                </div>
-                                <Button
-                                    type="submit"
-                                    variant="outline"
-                                    disabled={authModeForm.processing}
-                                >
-                                    Save
-                                </Button>
-                            </form>
-                            {authModeForm.errors.auth_mode && (
-                                <p
-                                    role="alert"
-                                    className="text-sm text-destructive"
-                                >
-                                    {authModeForm.errors.auth_mode}
-                                </p>
-                            )}
+                                    Open sign-in and security
+                                </Link>
+                            </Button>
                         </CardContent>
                     </Card>
                 )}

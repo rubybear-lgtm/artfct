@@ -29,10 +29,12 @@ final class RealAuthKitClient implements AuthKitClientContract
 
         /** @var object{id: string, email: string, emailVerified: bool|null, firstName: string|null, lastName: string|null, profilePictureUrl: string|null} $user */
         $user = $result->user;
+        $rawMethod = $result->raw['authentication_method'] ?? ($result->raw['authenticationMethod'] ?? null);
+        $provider = is_string($rawMethod) && $rawMethod !== '' ? $rawMethod : 'authkit';
 
         return new AuthKitProfile(
             externalId: $user->id,
-            provider: $result->authenticationMethod ?? 'unknown',
+            provider: $provider,
             email: $user->email,
             emailVerified: (bool) $user->emailVerified,
             firstName: $user->firstName,

@@ -32,7 +32,7 @@ export function CollectionList({
                     </p>
                     <Link
                         href={collectionsUrl}
-                        className="group mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary"
+                        className="group mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-[var(--accent)]"
                     >
                         Create a collection
                         <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
@@ -66,7 +66,7 @@ export function CollectionList({
                     </ul>
                     <Link
                         href={collectionsUrl}
-                        className="group mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary"
+                        className="group mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-[var(--accent)]"
                     >
                         All collections
                         <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
@@ -103,7 +103,7 @@ export function CollectionShelf({
                     No collections yet.{' '}
                     <Link
                         href={collectionsUrl}
-                        className="font-medium text-primary"
+                        className="font-medium text-[var(--accent)]"
                     >
                         Create a collection
                     </Link>

@@ -27,7 +27,7 @@ export function SetupStrip({ steps }: { steps: SetupStep[] }) {
                     type="button"
                     aria-expanded={open}
                     onClick={() => setOpen((value) => !value)}
-                    className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary"
+                    className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-[var(--accent)]"
                 >
                     {open ? 'Hide steps' : 'Show steps'}
                     <ChevronDown

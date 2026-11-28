@@ -103,14 +103,16 @@ class ArtifactPreviewController extends Controller
             return $this->unavailable();
         }
 
-        $response = $this->html($artifact['html']);
+        $sanitizedHtml = $this->stripScripts($artifact['html']);
+
+        $response = $this->html($sanitizedHtml);
         $response->headers->set('Server-Timing', 'artifact_fetch;dur='.number_format((hrtime(true) - $fetchStartedAt) / 1_000_000, 2, '.', ''));
         $response->setEtag(hash('sha256', implode(':', [
             (string) $user->id,
             (string) $team->id,
             $artifactId,
             (string) ($artifact['version'] ?? ''),
-            $artifact['html'],
+            $sanitizedHtml,
         ])), true);
         // A version query is a cache key, never authority to read old content.
         // Do not cache a newer body under a stale or speculative version URL.
@@ -132,6 +134,23 @@ class ArtifactPreviewController extends Controller
     private function memberTeam(Request $request, string $slug): ?Team
     {
         return $request->user()?->teams()->where('slug', $slug)->first();
+    }
+
+    /**
+     * Strip <script> blocks before serving inert preview HTML so sandboxed
+     * preview iframes do not emit browser console errors while CSP and iframe
+     * `sandbox=""` continue enforcing defense-in-depth.
+     */
+    private function stripScripts(string $html): string
+    {
+        if (stripos($html, '<script') === false) {
+            return $html;
+        }
+
+        $stripped = preg_replace('/<script\b[^>]*>.*?<\/script\s*>/is', '', $html);
+        $stripped = preg_replace('/<script\b[^>]*\/?>/is', '', $stripped ?? $html);
+
+        return $stripped ?? $html;
     }
 
     private function unavailable(int $status = 404): Response

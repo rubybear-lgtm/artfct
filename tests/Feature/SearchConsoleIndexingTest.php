@@ -9,7 +9,7 @@ test('retired marketing shells permanently redirect to a live page', function (s
         ->assertRedirect($to)
         ->assertStatus(301);
 })->with([
-    ['/pricing', '/'],
+    ['/pricing', '/#plans'],
     ['/free', '/'],
     ['/signup', '/login?screen_hint=sign-up'],
     ['/app', '/'],

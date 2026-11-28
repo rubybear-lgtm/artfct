@@ -50,7 +50,7 @@ test('console_grid_shows_a_card_with_a_live_preview_and_a_working_menu', functio
         ->assertNoJavaScriptErrors()
         ->assertVisible('@artifact-grid')
         ->assertSee('GRIDCARD report')
-        ->assertAttributeContains('@open-artifact-title', 'href', '/open');
+        ->assertAttributeContains('@open-artifact-title', 'href', '/a/'.ARTIFACT_LINK_ID);
 
     expect($page->script("document.querySelector('[data-testid=\"artifact-grid\"] iframe')?.getAttribute('src') ?? ''"))
         ->toContain('/artifacts/'.ARTIFACT_LINK_ID.'/preview');

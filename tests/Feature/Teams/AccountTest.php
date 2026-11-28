@@ -7,6 +7,8 @@ use App\Models\Membership;
 use App\Models\OrgToken;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\AuthKit\AuthKitProfile;
+use App\Services\Identity\IdentityResolver;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -154,4 +156,53 @@ test('account_page_marks_the_last_admin_as_cannot_leave', function () {
 
             return $row['canLeave'] === false && $row['leaveBlockedReason'] === 'Promote another admin first.';
         }));
+});
+
+test('account_page_displays_human_readable_identity_provider_labels', function () {
+    $user = User::factory()->create();
+    $user->externalIdentities()->create([
+        'provider' => 'GoogleOAuth',
+        'external_id' => 'ext-google-1',
+        'email' => $user->email,
+        'verified_at' => now(),
+    ]);
+    $user->externalIdentities()->create([
+        'provider' => 'unknown',
+        'external_id' => 'ext-legacy-1',
+        'email' => 'alt@example.com',
+        'verified_at' => now(),
+    ]);
+
+    test()->actingAs($user)->get(route('account.show'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('identities.0.provider', 'Google')
+            ->where('identities.1.provider', 'WorkOS AuthKit'));
+});
+
+test('identity_resolver_heals_legacy_unknown_provider_on_sign_in', function () {
+    $user = User::factory()->create(['email' => 'heal@example.com']);
+    $identity = $user->externalIdentities()->create([
+        'provider' => 'unknown',
+        'external_id' => 'user_workos_123',
+        'email' => 'heal@example.com',
+        'verified_at' => now(),
+    ]);
+
+    $resolved = app(IdentityResolver::class)->resolve(
+        new AuthKitProfile(
+            externalId: 'user_workos_123',
+            provider: 'GoogleOAuth',
+            email: 'heal@example.com',
+            emailVerified: true,
+            firstName: 'Heal',
+            lastName: 'User',
+            avatar: null,
+        ),
+    );
+
+    expect($resolved[0]->id)->toBe($user->id)
+        ->and($resolved[1])->toBeFalse()
+        ->and($identity->fresh()->provider)->toBe('GoogleOAuth')
+        ->and($user->externalIdentities()->count())->toBe(1);
 });

@@ -282,6 +282,7 @@ test('authentication_page_renders_with_mode_previews', function () {
         ->assertSee('Authentication')
         ->assertSee('Verified domains')
         ->assertSee('Enterprise feature')
-        ->assertSee('no verified domain')
+        ->assertSee('Verify a domain')
+        ->assertDontSee('auth_mode')
         ->assertNoJavaScriptErrors();
 });

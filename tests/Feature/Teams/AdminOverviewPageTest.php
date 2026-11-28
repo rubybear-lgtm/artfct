@@ -37,7 +37,19 @@ test('admin_overview_summarises_people_plan_tools_and_records', function () {
             ->where('members.total', 3)
             ->where('members.admins', 2)
             ->where('pendingInvitations', 1)
-            ->where('connections.active', 2));
+            ->where('connections.active', 2)
+            ->where('connections.total', 4));
+});
+
+test('admin_overview_flags_a_pro_plan', function () {
+    $team = Team::factory()->create(['plan' => Plan::Pro]);
+    $admin = memberOfTeam($team, TeamRole::Admin);
+
+    test()->actingAs($admin)->get(route('teams.admin.show', $team))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('team.plan', 'pro')
+            ->where('team.isEnterprise', false));
 });
 
 test('admin_overview_flags_an_enterprise_plan', function () {

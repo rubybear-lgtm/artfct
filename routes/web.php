@@ -85,7 +85,7 @@ Route::get('/robots.txt', RobotsController::class)->name('robots');
 // the closest live page so the 4xx report clears without inventing pages.
 // GET-only, same shape as the retired blog redirect above, so the isolation
 // matrix keys them as ordinary public GETs.
-Route::get('/pricing', fn () => redirect('/', 301));
+Route::get('/pricing', fn () => redirect('/#plans', 301));
 // The free tool page was removed; links to it land on the home page.
 Route::get('/free', fn () => redirect('/', 301));
 Route::get('/signup', fn () => redirect('/login?screen_hint=sign-up', 301));
@@ -116,6 +116,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('a/{artifactId}/sharing', [ArtifactViewerController::class, 'updateSharing'])->name('artifacts.sharing.update');
     Route::post('a/{artifactId}/comments', [ArtifactViewerController::class, 'storeComment'])->middleware('throttle:artifact-comment-store')->name('artifacts.comments.store');
     Route::patch('a/{artifactId}/comments/{commentId}', [ArtifactViewerController::class, 'resolveComment'])->whereNumber('commentId')->middleware('throttle:artifact-comment-resolve')->name('artifacts.comments.resolve');
+    Route::get('a/{artifactId}/open', [ArtifactViewerController::class, 'open'])->name('artifacts.open');
     Route::get('a/{artifactId}/download', [ArtifactViewerController::class, 'download'])->name('artifacts.download');
     Route::get('a/{artifactId}/download.html', [ArtifactViewerController::class, 'downloadHtml'])->name('artifacts.download.html');
     Route::get('a/{artifactId}/download-handoff.zip', [ArtifactViewerController::class, 'downloadHandoff'])->name('artifacts.download.handoff');

@@ -66,7 +66,12 @@ interface Props {
         storageExceeded: boolean;
         artifactsExceeded: boolean;
     } | null;
-    limits: { free: PlanLimits; pro: PlanLimits; team: PlanLimits };
+    limits: {
+        free: PlanLimits;
+        pro: PlanLimits;
+        team: PlanLimits;
+        enterprise: PlanLimits;
+    };
     prices: {
         proMonthly: string;
         proYearly: string;
@@ -76,6 +81,17 @@ interface Props {
         businessContact: string;
     };
     checkout: string | null;
+}
+
+const PLAN_DISPLAY_NAMES: Record<Props['team']['plan'], string> = {
+    free: 'Free',
+    pro: 'Pro',
+    team: 'Team',
+    enterprise: 'Enterprise',
+};
+
+function peopleCountLabel(count: number): string {
+    return `${count} ${count === 1 ? 'person' : 'people'}`;
 }
 
 const size = (bytes: number) => {
@@ -208,7 +224,7 @@ export default function Billing({
             <PageHeader
                 eyebrow={`Admin · ${team.name}`}
                 title="Billing"
-                description="Plan limits, storage and monthly artifact usage, and payment settings."
+                description="Your plan, what you are using, invoices and payment method."
             />
 
             <div className="flex flex-col gap-6">
@@ -226,7 +242,10 @@ export default function Billing({
                     </Alert>
                 )}
                 {checkout === 'success' && paid && (
-                    <Alert>You are on the {team.plan} plan. Thanks!</Alert>
+                    <Alert>
+                        You are on the {PLAN_DISPLAY_NAMES[team.plan]} plan.
+                        Thanks!
+                    </Alert>
                 )}
                 {team.onTrial && team.trialDaysLeft != null && (
                     <Alert
@@ -268,122 +287,208 @@ export default function Billing({
                                     paid || team.onTrial ? 'success' : 'outline'
                                 }
                             >
-                                {team.onTrial ? 'team trial' : team.plan}
+                                {team.onTrial
+                                    ? 'Team trial'
+                                    : PLAN_DISPLAY_NAMES[team.plan]}
                             </Badge>
                         </CardTitle>
                         <CardDescription>
                             {team.onTrial
-                                ? `Full Team features while the trial lasts. ${team.activeSeats} people on this workspace.`
+                                ? `Full Team features while the trial lasts. ${peopleCountLabel(team.activeSeats)} on this workspace.`
                                 : paid
-                                  ? `${team.activeSeats} people on this workspace.${team.renewsAt && !team.cancelAtPeriodEnd ? ` Renews ${formatLocalDate(team.renewsAt, reader, {})}.` : ''}`
+                                  ? `${peopleCountLabel(team.activeSeats)} on this workspace.${team.renewsAt && !team.cancelAtPeriodEnd ? ` Renews ${formatLocalDate(team.renewsAt, reader, {})}.` : ''}`
                                   : 'Free plan. Upgrade to Pro or Team when you need more.'}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-col gap-4">
-                        {(!paid || team.onTrial) && canManage && (
+                        {team.plan !== 'enterprise' && canManage && (
                             <div className="flex flex-col gap-3">
-                                <div
-                                    className="flex flex-wrap gap-2"
-                                    role="group"
-                                    aria-label="Billing period"
-                                >
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant={yearly ? 'outline' : 'default'}
-                                        onClick={() => setYearly(false)}
+                                {(!paid ||
+                                    team.onTrial ||
+                                    (team.plan === 'pro' &&
+                                        !team.hasSubscription)) && (
+                                    <div
+                                        className="flex flex-wrap gap-2"
+                                        role="group"
+                                        aria-label="Billing period"
                                     >
-                                        Monthly
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant={yearly ? 'default' : 'outline'}
-                                        onClick={() => setYearly(true)}
-                                    >
-                                        Yearly · {prices.yearlySavings}
-                                    </Button>
-                                </div>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={
+                                                yearly ? 'outline' : 'default'
+                                            }
+                                            onClick={() => setYearly(false)}
+                                        >
+                                            Monthly
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={
+                                                yearly ? 'default' : 'outline'
+                                            }
+                                            onClick={() => setYearly(true)}
+                                        >
+                                            Yearly · {prices.yearlySavings}
+                                        </Button>
+                                    </div>
+                                )}
                                 <div className="flex min-w-0 flex-wrap gap-2">
-                                    <Button
-                                        disabled={!stripeConfigured}
-                                        className="max-w-full whitespace-normal"
-                                        onClick={() => startCheckout('pro')}
-                                    >
-                                        {yearly
-                                            ? prices.proYearly
-                                            : prices.proMonthly}{' '}
-                                        · Pro
-                                    </Button>
-                                    <Button
-                                        disabled={!stripeConfigured}
-                                        className="max-w-full whitespace-normal"
-                                        onClick={() => startCheckout('team')}
-                                    >
-                                        {yearly
-                                            ? prices.teamYearly
-                                            : prices.teamMonthly}{' '}
-                                        · Team
-                                    </Button>
+                                    {(!paid || team.onTrial) && (
+                                        <>
+                                            <Button
+                                                disabled={!stripeConfigured}
+                                                className="max-w-full whitespace-normal"
+                                                onClick={() =>
+                                                    startCheckout('pro')
+                                                }
+                                            >
+                                                {yearly
+                                                    ? prices.proYearly
+                                                    : prices.proMonthly}{' '}
+                                                · Pro
+                                            </Button>
+                                            <Button
+                                                disabled={!stripeConfigured}
+                                                className="max-w-full whitespace-normal"
+                                                onClick={() =>
+                                                    startCheckout('team')
+                                                }
+                                            >
+                                                {yearly
+                                                    ? prices.teamYearly
+                                                    : prices.teamMonthly}{' '}
+                                                · Team
+                                            </Button>
+                                        </>
+                                    )}
+                                    {team.plan === 'pro' &&
+                                        !team.onTrial &&
+                                        (team.hasSubscription ? (
+                                            <Button
+                                                disabled={!stripeConfigured}
+                                                className="max-w-full whitespace-normal"
+                                                onClick={() =>
+                                                    router.post(
+                                                        teams.billing.portal.url(
+                                                            { team: team.slug },
+                                                        ),
+                                                    )
+                                                }
+                                            >
+                                                Upgrade to Team
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                disabled={!stripeConfigured}
+                                                className="max-w-full whitespace-normal"
+                                                onClick={() =>
+                                                    startCheckout('team')
+                                                }
+                                            >
+                                                Upgrade to Team ·{' '}
+                                                {yearly
+                                                    ? prices.teamYearly
+                                                    : prices.teamMonthly}
+                                            </Button>
+                                        ))}
                                 </div>
                                 <p className="text-sm break-words text-muted-foreground">
-                                    Pro is solo. Team covers up to 10 people; AI
-                                    bots stay free. Over 10? Contact{' '}
-                                    <a
-                                        className="break-all underline"
-                                        href={`mailto:${prices.businessContact}`}
-                                    >
-                                        {prices.businessContact}
-                                    </a>{' '}
-                                    about Business.
+                                    {team.plan === 'team' && !team.onTrial ? (
+                                        <>
+                                            Need more than 10 people, SAML SSO,
+                                            or audit export? Contact{' '}
+                                            <a
+                                                className="break-all underline"
+                                                href={`mailto:${prices.businessContact}`}
+                                            >
+                                                {prices.businessContact}
+                                            </a>{' '}
+                                            about Enterprise.
+                                        </>
+                                    ) : (
+                                        <>
+                                            Pro is solo. Team covers up to 10
+                                            people; AI bots stay free. Over 10
+                                            or need SAML SSO? Contact{' '}
+                                            <a
+                                                className="break-all underline"
+                                                href={`mailto:${prices.businessContact}`}
+                                            >
+                                                {prices.businessContact}
+                                            </a>{' '}
+                                            about Enterprise.
+                                        </>
+                                    )}
                                 </p>
                             </div>
                         )}
-                        {(!paid || team.onTrial) && !stripeConfigured && (
-                            <p className="text-sm text-muted-foreground">
-                                Payments are not enabled on this environment
-                                yet.
-                            </p>
-                        )}
+                        {(!paid ||
+                            team.onTrial ||
+                            (team.plan === 'pro' && !team.hasSubscription)) &&
+                            !stripeConfigured && (
+                                <p className="text-sm text-muted-foreground">
+                                    Payments are not enabled on this environment
+                                    yet.
+                                </p>
+                            )}
                         {(team.hasSubscription || team.onTrial) &&
                             canManage && (
-                                <Button
-                                    variant="outline"
-                                    onClick={() =>
-                                        router.post(
-                                            teams.billing.portal.url({
-                                                team: team.slug,
-                                            }),
-                                        )
-                                    }
-                                >
-                                    Payment method &amp; invoices
-                                </Button>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() =>
+                                            router.post(
+                                                teams.billing.portal.url({
+                                                    team: team.slug,
+                                                }),
+                                            )
+                                        }
+                                    >
+                                        Payment method &amp; invoices
+                                    </Button>
+                                    {paid &&
+                                        team.hasSubscription &&
+                                        isOwner &&
+                                        (team.cancelAtPeriodEnd ? (
+                                            <Button
+                                                onClick={() =>
+                                                    router.post(
+                                                        teams.billing.resume.url(
+                                                            {
+                                                                team: team.slug,
+                                                            },
+                                                        ),
+                                                    )
+                                                }
+                                            >
+                                                Resume subscription
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                variant="outline"
+                                                onClick={() =>
+                                                    setConfirmingCancel(true)
+                                                }
+                                            >
+                                                Cancel subscription
+                                            </Button>
+                                        ))}
+                                </div>
                             )}
-                        {paid &&
-                            team.hasSubscription &&
-                            canManage &&
-                            isOwner &&
-                            (team.cancelAtPeriodEnd ? (
-                                <Button
-                                    onClick={() =>
-                                        router.post(
-                                            teams.billing.resume.url({
-                                                team: team.slug,
-                                            }),
-                                        )
-                                    }
-                                >
-                                    Resume subscription
-                                </Button>
-                            ) : (
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setConfirmingCancel(true)}
-                                >
-                                    Cancel subscription
-                                </Button>
-                            ))}
+                        {paid && !team.hasSubscription && !team.onTrial && (
+                            <p className="text-sm text-muted-foreground">
+                                Managed outside Stripe — no payment method or
+                                self-serve invoices on file.
+                            </p>
+                        )}
+                        {!paid && !team.onTrial && (
+                            <p className="text-sm text-muted-foreground">
+                                No payment method on file while on the Free
+                                plan.
+                            </p>
+                        )}
                         {!canManage && (
                             <p className="text-sm text-muted-foreground">
                                 Only admins can change the plan.
@@ -392,62 +497,74 @@ export default function Billing({
                     </CardContent>
                 </Card>
 
-                {invoices.length > 0 && (
+                {(invoices.length > 0 ||
+                    team.hasSubscription ||
+                    team.onTrial) && (
                     <Card>
                         <CardHeader>
                             <CardTitle>Invoices</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <Table>
-                                <thead>
-                                    <tr>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Number</TableHead>
-                                        <TableHead>Amount</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead />
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {invoices.map((invoice) => (
-                                        <TableRow
-                                            key={invoice.number ?? invoice.date}
-                                        >
-                                            <TableCell>
-                                                {formatLocalDate(
-                                                    invoice.date * 1000,
-                                                    reader,
-                                                    {},
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {invoice.number}
-                                            </TableCell>
-                                            <TableCell>
-                                                {(invoice.amount / 100).toFixed(
-                                                    2,
-                                                )}{' '}
-                                                {invoice.currency.toUpperCase()}
-                                            </TableCell>
-                                            <TableCell>
-                                                {invoice.status}
-                                            </TableCell>
-                                            <TableCell>
-                                                {invoice.url && (
-                                                    <a
-                                                        className="underline"
-                                                        href={invoice.url}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                    >
-                                                        View
-                                                    </a>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </tbody>
-                            </Table>
+                            {invoices.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    No invoices yet. Invoices will appear here
+                                    once billed.
+                                </p>
+                            ) : (
+                                <Table>
+                                    <thead>
+                                        <tr>
+                                            <TableHead>Date</TableHead>
+                                            <TableHead>Number</TableHead>
+                                            <TableHead>Amount</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead />
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {invoices.map((invoice) => (
+                                            <TableRow
+                                                key={
+                                                    invoice.number ??
+                                                    invoice.date
+                                                }
+                                            >
+                                                <TableCell>
+                                                    {formatLocalDate(
+                                                        invoice.date * 1000,
+                                                        reader,
+                                                        {},
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {invoice.number}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {(
+                                                        invoice.amount / 100
+                                                    ).toFixed(2)}{' '}
+                                                    {invoice.currency.toUpperCase()}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {invoice.status}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {invoice.url && (
+                                                        <a
+                                                            className="underline"
+                                                            href={invoice.url}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                        >
+                                                            View
+                                                        </a>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </tbody>
+                                </Table>
+                            )}
                         </CardContent>
                     </Card>
                 )}
@@ -486,34 +603,116 @@ export default function Billing({
                     <CardHeader>
                         <CardTitle>What each plan includes</CardTitle>
                     </CardHeader>
-                    <CardContent className="grid gap-4 sm:grid-cols-2">
-                        {(['free', 'team'] as const).map((name) => (
-                            <div
-                                key={name}
-                                className="rounded-md border border-border p-4 text-sm"
-                            >
-                                <p className="mb-2 font-semibold capitalize">
-                                    {name}
-                                </p>
-                                <ul className="flex flex-col gap-1 text-muted-foreground">
-                                    <li>
-                                        {size(limits[name].storage_bytes)}{' '}
-                                        storage
-                                    </li>
-                                    <li>
-                                        {limits[name].artifacts_per_month}{' '}
-                                        artifacts per month
-                                    </li>
-                                    <li>
-                                        {size(
-                                            limits[name]
-                                                .bundle_size_ceiling_bytes,
-                                        )}{' '}
-                                        per artifact
-                                    </li>
-                                </ul>
-                            </div>
-                        ))}
+                    <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        {(
+                            [
+                                {
+                                    key: 'free',
+                                    title: 'Free',
+                                    price: '$0',
+                                    highlights: [
+                                        '1 person',
+                                        'Standard artifact sharing',
+                                    ],
+                                },
+                                {
+                                    key: 'pro',
+                                    title: 'Pro',
+                                    price: yearly
+                                        ? prices.proYearly
+                                        : prices.proMonthly,
+                                    highlights: [
+                                        '1 person',
+                                        'AI bot teammates & search by description',
+                                        'Custom web address',
+                                    ],
+                                },
+                                {
+                                    key: 'team',
+                                    title: 'Team',
+                                    price: yearly
+                                        ? prices.teamYearly
+                                        : prices.teamMonthly,
+                                    highlights: [
+                                        'Up to 10 people (AI bots free)',
+                                        'Everything in Pro',
+                                    ],
+                                },
+                                {
+                                    key: 'enterprise',
+                                    title: 'Enterprise',
+                                    price: 'Custom',
+                                    highlights: [
+                                        'Unlimited people',
+                                        'SAML SSO & domain verification',
+                                        'Custom retention, legal holds & SIEM audit export',
+                                    ],
+                                },
+                            ] as const
+                        ).map((tier) => {
+                            const isCurrent =
+                                team.plan === tier.key && !team.onTrial;
+
+                            return (
+                                <div
+                                    key={tier.key}
+                                    className={`flex flex-col rounded-md border p-4 text-sm ${
+                                        isCurrent
+                                            ? 'border-[var(--accent)] bg-tint/40'
+                                            : 'border-border'
+                                    }`}
+                                >
+                                    <div className="mb-1 flex items-center justify-between gap-2">
+                                        <p className="font-semibold">
+                                            {tier.title}
+                                        </p>
+                                        {isCurrent && (
+                                            <Badge variant="success">
+                                                Current
+                                            </Badge>
+                                        )}
+                                    </div>
+                                    <p className="mb-3 text-xs font-medium text-muted-foreground">
+                                        {tier.price}
+                                    </p>
+                                    <ul className="flex flex-1 flex-col gap-1 text-muted-foreground">
+                                        {tier.highlights.map((item) => (
+                                            <li key={item}>{item}</li>
+                                        ))}
+                                        <li>
+                                            {size(
+                                                limits[tier.key].storage_bytes,
+                                            )}{' '}
+                                            storage
+                                        </li>
+                                        <li>
+                                            {formatLocalNumber(
+                                                limits[tier.key]
+                                                    .artifacts_per_month,
+                                                reader,
+                                            )}{' '}
+                                            artifacts per month
+                                        </li>
+                                        <li>
+                                            {size(
+                                                limits[tier.key]
+                                                    .bundle_size_ceiling_bytes,
+                                            )}{' '}
+                                            per artifact
+                                        </li>
+                                    </ul>
+                                    {tier.key === 'enterprise' &&
+                                        team.plan !== 'enterprise' && (
+                                            <a
+                                                className="mt-3 text-xs font-medium text-[var(--accent)] underline underline-offset-2"
+                                                href={`mailto:${prices.businessContact}?subject=${encodeURIComponent(`Enterprise plan for ${team.name}`)}`}
+                                            >
+                                                Contact sales
+                                            </a>
+                                        )}
+                                </div>
+                            );
+                        })}
                     </CardContent>
                 </Card>
             </div>
@@ -522,7 +721,7 @@ export default function Billing({
                 open={confirmingCancel}
                 onOpenChange={setConfirmingCancel}
                 title="Cancel this subscription?"
-                description={`${team.name} keeps the ${team.plan} plan until ${periodEnd}. You can resume before then.`}
+                description={`${team.name} keeps the ${PLAN_DISPLAY_NAMES[team.plan]} plan until ${periodEnd}. You can resume before then.`}
                 confirmLabel="Cancel subscription"
                 onConfirm={cancelSubscription}
                 processing={cancelling}

@@ -40,6 +40,7 @@ class AdminOverviewController extends Controller
             'pendingInvitations' => $team->invitations()->whereNull('accepted_at')->count(),
             'connections' => [
                 'active' => McpConnection::query()->where('team_id', $team->id)->active()->count(),
+                'total' => McpConnection::query()->where('team_id', $team->id)->count(),
             ],
         ]);
     }

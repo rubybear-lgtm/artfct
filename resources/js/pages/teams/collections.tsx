@@ -1,5 +1,5 @@
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import CollectionController from '@/actions/App/Http/Controllers/Teams/CollectionController';
@@ -118,6 +118,7 @@ function CollectionCard({
     collection,
     expanded,
     onToggle,
+    showPreviewToggle = true,
     canEdit,
     canPin,
     artifactOptions,
@@ -126,6 +127,7 @@ function CollectionCard({
     collection: CollectionRow;
     expanded: boolean;
     onToggle: () => void;
+    showPreviewToggle?: boolean;
     canEdit: boolean;
     canPin: boolean;
     artifactOptions: ArtifactOption[];
@@ -194,66 +196,66 @@ function CollectionCard({
                     )}
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col gap-3">
-                    <button
-                        type="button"
-                        aria-haspopup="dialog"
-                        aria-expanded={expanded}
-                        aria-label={`Show artifacts in ${collection.name}, ${artifactCountLabel(collection.artifactIds.length)}`}
-                        data-testid={`collection-toggle-${collection.id}`}
-                        onClick={onToggle}
-                        className="min-h-11 w-full rounded-lg border border-border bg-muted/40 p-3 text-left transition-colors hover:bg-muted motion-reduce:transition-none"
-                    >
-                        <span
-                            aria-hidden="true"
-                            data-testid={`collection-stack-${collection.id}`}
-                            className="relative block h-36"
+                    {showPreviewToggle && (
+                        <button
+                            type="button"
+                            aria-haspopup="dialog"
+                            aria-expanded={expanded}
+                            aria-label={`Show artifacts in ${collection.name}, ${artifactCountLabel(collection.artifactIds.length)}`}
+                            data-testid={`collection-toggle-${collection.id}`}
+                            onClick={onToggle}
+                            className="min-h-11 w-full rounded-lg border border-border bg-muted/40 p-3 text-left transition-colors hover:bg-muted motion-reduce:transition-none"
                         >
-                            {collection.artifactIds.length === 0 ? (
-                                <>
-                                    <span className="absolute inset-x-6 top-0 bottom-3 rounded-lg border border-border bg-muted/60" />
-                                    <span className="absolute inset-x-3 top-1.5 bottom-1.5 rounded-lg border border-dashed border-border bg-background" />
-                                    <span className="absolute inset-x-0 top-3 bottom-0 rounded-lg border border-dashed border-border bg-background" />
-                                </>
-                            ) : (
-                                <>
-                                    {sheets >= 3 && (
-                                        <span className="absolute inset-x-6 top-0 bottom-3 rotate-[2deg] rounded-lg border border-border bg-muted" />
-                                    )}
-                                    {sheets >= 2 && (
-                                        <span className="absolute inset-x-3 top-1.5 bottom-1.5 -rotate-[1deg] rounded-lg border border-border bg-muted" />
-                                    )}
-                                    <span className="absolute inset-x-0 top-3 bottom-0 overflow-hidden rounded-lg border border-border bg-background">
-                                        {front ? (
-                                            <ArtifactPreview
-                                                previewUrl={front.url}
-                                                title={`Preview of ${artifactName(artifactOptions, front.id)}`}
-                                                decorative
-                                            />
-                                        ) : (
-                                            <span className="flex h-full flex-col justify-center gap-1.5 p-3">
-                                                <span className="h-3 w-2/3 rounded bg-muted" />
-                                                <span className="h-2 w-full rounded bg-muted/70" />
-                                                <span className="h-2 w-5/6 rounded bg-muted/70" />
-                                            </span>
+                            <span
+                                aria-hidden="true"
+                                data-testid={`collection-stack-${collection.id}`}
+                                className="relative block h-36"
+                            >
+                                {collection.artifactIds.length === 0 ? (
+                                    <span className="flex h-full items-center justify-center rounded-lg border border-dashed border-border bg-background/60 px-4 text-center text-xs text-muted-foreground">
+                                        No artifacts yet
+                                    </span>
+                                ) : (
+                                    <>
+                                        {sheets >= 3 && (
+                                            <span className="absolute inset-x-6 top-0 bottom-3 rotate-[2deg] rounded-lg border border-border bg-muted" />
+                                        )}
+                                        {sheets >= 2 && (
+                                            <span className="absolute inset-x-3 top-1.5 bottom-1.5 -rotate-[1deg] rounded-lg border border-border bg-muted" />
+                                        )}
+                                        <span className="absolute inset-x-0 top-3 bottom-0 overflow-hidden rounded-lg border border-border bg-background">
+                                            {front ? (
+                                                <ArtifactPreview
+                                                    previewUrl={front.url}
+                                                    title={`Preview of ${artifactName(artifactOptions, front.id)}`}
+                                                    decorative
+                                                />
+                                            ) : (
+                                                <span className="flex h-full flex-col justify-center gap-1.5 p-3">
+                                                    <span className="h-3 w-2/3 rounded bg-muted" />
+                                                    <span className="h-2 w-full rounded bg-muted/70" />
+                                                    <span className="h-2 w-5/6 rounded bg-muted/70" />
+                                                </span>
+                                            )}
+                                        </span>
+                                    </>
+                                )}
+                            </span>
+                            <span className="mt-2 flex min-h-11 items-center justify-between gap-2 text-sm font-medium">
+                                <span>
+                                    Show artifacts
+                                    <span className="font-normal text-muted-foreground">
+                                        {' '}
+                                        ·{' '}
+                                        {artifactCountLabel(
+                                            collection.artifactIds.length,
                                         )}
                                     </span>
-                                </>
-                            )}
-                        </span>
-                        <span className="mt-2 flex min-h-11 items-center justify-between gap-2 text-sm font-medium">
-                            <span>
-                                Show artifacts
-                                <span className="font-normal text-muted-foreground">
-                                    {' '}
-                                    ·{' '}
-                                    {artifactCountLabel(
-                                        collection.artifactIds.length,
-                                    )}
                                 </span>
+                                <StackChevron />
                             </span>
-                            <StackChevron />
-                        </span>
-                    </button>
+                        </button>
+                    )}
                     {canEdit &&
                         (availableArtifacts.length === 0 ? (
                             <p className="text-sm text-muted-foreground">
@@ -477,7 +479,7 @@ function CollectionArtifactRows({
                                                     target="_blank"
                                                     rel="noreferrer"
                                                     data-testid={`collection-open-${collection.id}-${id}`}
-                                                    className="inline-flex min-h-11 items-center font-medium text-primary hover:underline"
+                                                    className="inline-flex min-h-11 items-center font-medium text-[var(--accent)] hover:underline"
                                                 >
                                                     Open
                                                 </a>
@@ -592,9 +594,31 @@ export default function Collections({
     // visits — which swap props but keep this component mounted — never
     // close what the reader opened, even across reorderings.
     const [openId, setOpenId] = useState<number | null>(null);
-    // Flag on: shelf selection is separate from the dialog. Picking a tile
-    // selects the inline section below; only the card toggle opens the dialog.
-    const [selectedId, setSelectedId] = useState<number | null>(null);
+    const [selectedId, setSelectedId] = useState<number | null>(() => {
+        if (typeof window === 'undefined') {
+            return null;
+        }
+
+        const match = window.location.hash.match(/^#collection-shelf-(\d+)$/);
+
+        return match ? Number(match[1]) : null;
+    });
+
+    useEffect(() => {
+        const syncFromHash = () => {
+            const match = window.location.hash.match(
+                /^#collection-shelf-(\d+)$/,
+            );
+
+            if (match) {
+                setSelectedId(Number(match[1]));
+            }
+        };
+
+        window.addEventListener('hashchange', syncFromHash);
+
+        return () => window.removeEventListener('hashchange', syncFromHash);
+    }, []);
 
     const openCollection = collections.find((c) => c.id === openId);
     const { features } = usePage<SharedProps>().props;
@@ -662,7 +686,17 @@ export default function Collections({
                                     data-testid={`collection-tile-${collection.id}`}
                                     aria-pressed={active}
                                     aria-label={`${collection.name}, ${artifactCountLabel(collection.artifactIds.length)}`}
-                                    onClick={() => setSelectedId(collection.id)}
+                                    onClick={() => {
+                                        setSelectedId(collection.id);
+
+                                        if (typeof window !== 'undefined') {
+                                            window.history.replaceState(
+                                                null,
+                                                '',
+                                                `#collection-shelf-${collection.id}`,
+                                            );
+                                        }
+                                    }}
                                     className={
                                         active
                                             ? 'flex min-h-11 flex-col gap-1 rounded-lg border border-[var(--accent)] bg-tint p-3 text-left transition-colors motion-reduce:transition-none'
@@ -700,6 +734,7 @@ export default function Collections({
                                 collection={activeCollection}
                                 expanded={openId === activeCollection.id}
                                 onToggle={() => setOpenId(activeCollection.id)}
+                                showPreviewToggle={false}
                                 canEdit={canEdit}
                                 canPin={canPin}
                                 artifactOptions={artifactOptions}

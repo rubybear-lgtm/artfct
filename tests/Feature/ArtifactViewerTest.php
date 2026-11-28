@@ -98,7 +98,9 @@ test('a_member_views_a_team_artifact_with_a_signed_frame_and_an_audited_mint', f
 
     expect($props['frameUrl'])->toStartWith(
         'https://view-team--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/?token=',
-    );
+    )
+        ->and($props['openUrl'])->toBe(route('artifacts.open', ['artifactId' => ARTIFACT_LINK_ID]))
+        ->and($props['openUrl'])->not->toContain('token=');
 
     parse_str((string) parse_url($props['frameUrl'], PHP_URL_QUERY), $query);
     $token = (string) ($query['token'] ?? '');
@@ -207,8 +209,9 @@ test('a_version_query_is_framed_at_that_exact_version', function () {
         'https://version-team--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/v:2/?token=',
     );
 
-    // The version the picker names is carried into the open-in-new-tab route.
-    expect($props['openUrl'])->toContain('version=2');
+    // The version the picker names is carried to the mint-on-click route without leaking the render token.
+    expect($props['openUrl'])->toBe(route('artifacts.open', ['artifactId' => ARTIFACT_LINK_ID, 'version' => 2]))
+        ->and($props['openUrl'])->not->toContain('token=');
 });
 
 test('a_malformed_version_query_is_refused_rather_than_framed', function () {
@@ -867,4 +870,99 @@ test('a_top_level_viewer_request_and_other_viewer_routes_are_unchanged_by_the_sh
     test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/freshness', ['Sec-Fetch-Dest' => 'iframe'])
         ->assertOk()
         ->assertExactJson(['version' => 1, 'sharing' => 'team', 'revoked' => false]);
+});
+
+test('opening_a_non_public_artifact_standalone_mints_a_fresh_token_and_audits_on_click', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('open-team', 'Open Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team']);
+
+    $viewer = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID);
+    $viewer->assertOk();
+    $props = viewerProps($viewer);
+
+    expect($props['openUrl'])->toBe(route('artifacts.open', ['artifactId' => ARTIFACT_LINK_ID]));
+
+    parse_str((string) parse_url($props['frameUrl'], PHP_URL_QUERY), $initialQuery);
+    $initialToken = (string) ($initialQuery['token'] ?? '');
+
+    // Advance past the initial 60-minute frame TTL so clicking Open must mint a new credential.
+    $this->travel(2)->hours();
+
+    $openResponse = test()->actingAs($member)->get($props['openUrl']);
+    $location = (string) $openResponse->headers->get('Location');
+
+    $openResponse->assertRedirect();
+    expect($location)->toStartWith('https://open-team--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/?token=')
+        ->and($openResponse->headers->get('Cache-Control'))->toContain('no-store')
+        ->and($openResponse->headers->get('Referrer-Policy'))->toBe('no-referrer');
+
+    parse_str((string) parse_url($location, PHP_URL_QUERY), $freshQuery);
+    $freshToken = (string) ($freshQuery['token'] ?? '');
+
+    expect($freshToken)->not->toBe('')
+        ->and($freshToken)->not->toBe($initialToken)
+        ->and(artifactTokenVerifies($freshToken, ARTIFACT_LINK_ID, ARTIFACT_LINK_SECRET, now()->timestamp))->toBeTrue();
+
+    $events = AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->orderBy('id')->get();
+    expect($events)->toHaveCount(2);
+    expect($events->last()?->target)->toBe(
+        'artifact:'.ARTIFACT_LINK_ID.' expires:'.Carbon::createFromTimestamp((int) explode('.', $freshToken)[1])->toIso8601String(),
+    )->not->toContain($freshToken);
+});
+
+test('opening_standalone_preserves_version_and_rejects_malformed_version', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('open-version-team', 'Open Version Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'team']);
+
+    $openResponse = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/open?version=2');
+    $openResponse->assertRedirect();
+
+    $location = (string) $openResponse->headers->get('Location');
+    expect($location)->toStartWith('https://open-version-team--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/v:2/?token=');
+
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/open?version=0')->assertStatus(422);
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/open?version=later')->assertStatus(422);
+});
+
+test('opening_a_public_artifact_standalone_redirects_untokened_without_audit', function () {
+    config([
+        'services.artifact_access.token_secret' => null,
+        'services.artifact_access.origin_suffix' => '.artfct.dev',
+    ]);
+
+    $team = viewerTeam('open-public-team', 'Open Public Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, ['sharing' => 'public']);
+
+    $openResponse = test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/open');
+
+    $openResponse->assertRedirect('https://open-public-team--'.ARTIFACT_LINK_ID.'.artfct.dev/p/'.ARTIFACT_LINK_ID.'/');
+    expect($openResponse->headers->get('Cache-Control'))->toContain('no-store')
+        ->and(AuditEvent::query()->where('event_type', AuditEventType::ArtifactLinkMinted)->exists())->toBeFalse();
+});
+
+test('opening_standalone_enforces_auth_membership_and_visibility', function () {
+    configureArtifactLinks();
+
+    $team = viewerTeam('open-auth-team', 'Open Auth Team');
+    $outsiderTeam = viewerTeam('open-outsider-team', 'Open Outsider Team');
+    $member = memberOfTeam($team, TeamRole::Member);
+    $outsider = memberOfTeam($outsiderTeam, TeamRole::Member);
+
+    seedViewerArtifact($team, ARTIFACT_LINK_ID, [
+        'sharing' => 'private',
+        'hidden' => true,
+    ]);
+
+    test()->get('/a/'.ARTIFACT_LINK_ID.'/open')->assertRedirect(route('login'));
+    test()->actingAs($member)->get('/a/'.ARTIFACT_LINK_ID.'/open')->assertNotFound();
+    test()->actingAs($outsider)->get('/a/'.ARTIFACT_LINK_ID.'/open')->assertNotFound();
+    test()->actingAs($member)->get('/a/ffffffffffffffffffffffffffffffff/open')->assertNotFound();
+    test()->actingAs($member)->get('/a/short/open')->assertNotFound();
 });

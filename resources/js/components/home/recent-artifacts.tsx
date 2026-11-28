@@ -95,7 +95,7 @@ export function RecentArtifacts({
                             href={teamRoutes.mcpConnections.index.url({
                                 team: teamSlug,
                             })}
-                            className="group mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary"
+                            className="group mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-[var(--accent)]"
                         >
                             Connect your AI tools
                             <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
@@ -119,7 +119,7 @@ export function RecentArtifacts({
             )}
             <Link
                 href={consoleRoutes.index.url({ team: teamSlug })}
-                className="group mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary"
+                className="group mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-[var(--accent)]"
             >
                 See all artifacts
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
