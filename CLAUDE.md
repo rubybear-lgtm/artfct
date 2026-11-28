@@ -231,6 +231,28 @@ Any PR that changes user-visible UI (Blade/Inertia/Vue/React components, CSS/Tai
 
 For any PR with big changes, the authoring agent must start a new, independent Cursor agent to review the PR (a fresh agent with no shared context, not the authoring agent reviewing itself), then address or explicitly answer each finding and re-request review from that reviewer until it comes back clear. Summarize the review rounds and outcome in the PR description. Treat a PR as big when it is roughly 300+ changed lines, spans multiple subsystems, or touches database migrations, auth/security, billing, or public API/MCP surfaces; when unsure, treat it as big.
 
+## Pull request approval and release ledger
+
+Open every PR against `develop`. Ruben runs production releases. Rigel verifies the production result against the released commit.
+
+Ada can approve small, low-risk changes for `develop`, including isolated one-line fixes, documentation additions or edits, and icon swaps. Judge by impact as well as size. Route changes involving runtime contracts, permissions, billing, migrations, infrastructure, or release behavior to Ruben. Ada-authored changes need independent review. Required CI must be green before marking a PR ready for review. Existing review and evidence requirements still apply.
+
+Every PR, including docs and icon changes, must append one entry to the [Artfct Release Changelog](https://artfct.dev/a/y0qwyqfntnayc) and add the matching entry under `Unreleased` in `CHANGELOG.md`. Include the PR link, what changed, why, the user or operational impact, and any verification or release notes. Link the artifact from the PR description and identify the entry by PR number. The reviewer checks both entries before approval.
+
+Record entries as pending until the PR merges. After merge, the author records the merge SHA and marks the entry as merged to `develop`. Keep previous entries and use the current artifact version when updating. Before release, reconcile the ledger against the last production release and the exact candidate SHA. Record the release tag and date only for changes included in the verified production release.
+
+### Ready to approve
+
+A PR is ready for approval only when every gate holds at the head commit. "Ready for review" comes earlier: green CI plus the existing evidence.
+
+1. **Shape.** Targets `develop`, is not a draft, is mergeable, and names the head SHA in the description. The diff matches the linked issue and carries no unrelated files, secrets, or debug output. A bug fix names the root cause, not just the symptom.
+2. **No CI issues.** Every required check is green at that SHA. A failed, cancelled, or timed-out required check blocks approval; fix it and re-run. Never bypass. A skipped check counts only when the workflow says it is not required for this change.
+3. **Feedback settled.** Every review finding has a disposition: fixed, or a written reason it does not apply or the current behaviour is intentional. Reply on the thread with the fixing commit or the reason, then resolve it. A fixed-but-unanswered thread is not settled.
+4. **Evidence, pstack and ledger.** The description describes the head, not an earlier commit: what and why, impact, and the proof each acceptance criterion names. For code changes it carries the pstack proof (`AGENTS.md` pstack workflow): the changed behaviour exercised against the real artifact or the mapped `verify-artfct` journey, the focused tests with commit and exit status, and a linked Artfct evidence artifact or a named blocker. Prose, lint, and a compile are not proof. It ends with the `#### Guidance Sources:` footer. The release-ledger entry and the `CHANGELOG.md` Unreleased entry exist, link this PR, and state impact and verification.
+5. **Big changes.** A big PR (roughly 300+ lines, multiple subsystems, migrations, auth/security, billing, or public API/MCP) carries an independent-review summary and how each finding was closed.
+
+Approval means Ruben can press merge; approval is not merge. Ada may approve small, low-risk PRs under the delegation above; everything else waits for Ruben. If a gate cannot be met for an environmental reason, say so and decide with Ruben; never silently waive it.
+
 ## Design Context
 
 The source of truth for all visual and content design is `DESIGN.md` at the repository root. Read it before designing or building any UI. The summary below is only orientation.

@@ -2,8 +2,9 @@
 name: release-to-production
 description: >
   Ship work to production through the standard pipeline: babysit each PR's CI
-  until green and merge it into develop, optionally verify on staging, then run
-  the Release to production Action and confirm the deploy. Use when asked to
+  until green, merge it into develop once approved, optionally verify on
+  staging, then, when Ruben asks, run the Release to production Action and
+  confirm the deploy. Use when asked to
   "release to production", "ship this", "release this PR", "get this live",
   or "cut a production release".
 metadata:
@@ -13,7 +14,7 @@ metadata:
 # Release to production
 
 Standard path: feature branch → PR into `develop` → CI loop until green →
-merge → optional staging acceptance → Release to production Action
+approval → merge → optional staging acceptance → Release to production Action
 (fast-forwards `main`) → verify Railway deploy + smoke. Production deploys
 from `main`, staging from `develop`. Full reference: `RELEASING.md`,
 `STAGING.md`.
@@ -48,7 +49,14 @@ from `main`, staging from `develop`. Full reference: `RELEASING.md`,
    `git fetch origin develop`, sync it (`git merge origin/develop`), push, and
    re-run the loop — merging PR A never re-validates PR B.
 
-Merge with `gh pr merge <PR> --merge` (repo history uses merge commits).
+Green CI is not permission to merge. First check the PR against **Ready to
+approve** under "Pull request approval and release ledger" in `AGENTS.md`, then
+merge only when Ruben asks for that merge, or when the PR is small and low-risk
+and Ada has approved it under that section's delegation. Otherwise stop and
+report that the PR is ready for approval.
+
+Merge with `gh pr merge <PR> --merge` (repo history uses merge commits). After
+the merge, the PR author records the merge SHA in the release ledger.
 
 ## Phase 2 — Staging acceptance (only when warranted)
 
@@ -67,6 +75,10 @@ Never use a Railway PR preview URL as evidence; they are not acceptance
 targets (RUB-518).
 
 ## Phase 3 — Release (Action only)
+
+Ruben runs production releases. Dispatch the real run only on Ruben's explicit
+request; otherwise stop and report the candidate SHA. Before releasing,
+reconcile the release ledger against the last production release and that SHA.
 
 Concurrency group `release-to-production` serializes releases; check
 `gh run list --workflow release-to-production.yml` for one already in flight

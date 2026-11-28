@@ -2,6 +2,26 @@
 
 <!-- What changed and why. -->
 
+## Release changelog
+
+- [ ] Added this PR to the [Artfct Release Changelog](https://artfct.dev/a/y0qwyqfntnayc) and to `CHANGELOG.md` under **Unreleased**.
+- Ledger entry (artifact link and PR number):
+- User or operational impact, verification, and release notes:
+
+## Verification (required for code changes)
+
+<!--
+pstack / prove-it-works: exercise the changed behaviour against the real artifact
+(or the mapped `verify-artfct` journey), run the focused tests, and link the
+evidence artifact. Record the commit, the command, and the exit status. Lint or
+compile alone is not verification. If there are no code changes, write: No code changes
+-->
+
+- Head SHA:
+- Behaviour exercised (journey or command):
+- Focused tests (commit + result):
+- Evidence artifact (Artfct link) or blocker:
+
 ## Screenshots (required for UI changes)
 
 <!--
@@ -29,3 +49,11 @@ If this is not a big change, write: Not a big change — independent review not 
 -->
 
 Not a big change — independent review not required
+
+## Ready to approve (reviewer)
+
+- [ ] Required CI is green at the head SHA; none failed, cancelled, or bypassed
+- [ ] Every review finding is fixed or has a written reason it does not apply, and its thread is resolved
+- [ ] Description is current for the head, with the `#### Guidance Sources:` footer
+- [ ] Code changes show pstack verification: real-artifact behaviour, focused tests, and the evidence artifact or blocker
+- [ ] Ledger and CHANGELOG entries link this PR; big changes summarize the independent review
