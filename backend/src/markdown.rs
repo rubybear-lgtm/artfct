@@ -6,9 +6,9 @@
 //! page (RUB-515). Convert to a self-contained HTML document instead.
 //!
 //! MCP `deploy_artifact` stores raw markdown as `text/markdown` under a `.md`
-//! path. This Worker is the sole HTML renderer for that content — matching
-//! Laravel's CommonMark `html_input => strip` and `allow_unsafe_links => false`
-//! so shared-origin preview CSP cannot execute injected script or follow
+//! path. The Worker and Laravel preview renderer share CommonMark/GFM output,
+//! matching `html_input => strip` and `allow_unsafe_links => false` so the
+//! shared-origin preview CSP cannot execute injected script or follow
 //! `javascript:` / `data:` destinations.
 
 use pulldown_cmark::{html, CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
@@ -77,7 +77,10 @@ pub(crate) fn content_type_is_markdown(content_type: &str) -> bool {
         .unwrap_or(content_type)
         .trim()
         .to_ascii_lowercase();
-    base == "text/markdown"
+    matches!(
+        base.as_str(),
+        "text/markdown" | "text/x-markdown" | "application/markdown"
+    )
 }
 
 /// Whether this response body should be rendered from markdown to HTML.
@@ -433,6 +436,45 @@ mod tests {
         assert!(path_is_markdown("README.md"));
         assert!(path_is_markdown("docs/Note.MarkDown"));
         assert!(!path_is_markdown("index.html"));
+    }
+
+    #[test]
+    fn detection_matches_shared_fixture() {
+        let cases: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/Fixtures/markdown-detection.json"))
+                .unwrap();
+
+        for case in cases.as_array().unwrap() {
+            let content_type = case["content_type"].as_str().unwrap_or("");
+            let entrypoint = case["entrypoint"].as_str().unwrap();
+            let expected = case["render"].as_bool().unwrap();
+
+            assert_eq!(
+                should_render_markdown(content_type, entrypoint, None),
+                expected,
+                "content_type={content_type:?}, entrypoint={entrypoint:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn markdown_mime_aliases_render_at_response_level() {
+        for content_type in [
+            "text/markdown; charset=utf-8",
+            "TEXT/X-MARKDOWN; Charset=UTF-8",
+            "Application/Markdown; charset=UTF-8",
+        ] {
+            let (ctype, body) = maybe_render_markdown_response(
+                content_type,
+                "index.html",
+                None,
+                b"# Alias".to_vec(),
+            );
+            assert_eq!(ctype, "text/html; charset=utf-8");
+            assert!(String::from_utf8(body)
+                .unwrap()
+                .contains("<h1 id=\"alias\">Alias</h1>"));
+        }
     }
 
     #[test]

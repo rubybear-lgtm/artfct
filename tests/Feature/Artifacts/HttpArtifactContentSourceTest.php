@@ -37,6 +37,7 @@ test('the content read returns the bundle file list the Worker sends', function 
         ['path' => 'app.js', 'sha256' => str_repeat('b', 64), 'content_type' => 'text/javascript', 'size_bytes' => 12],
         ['path' => 'index.html', 'sha256' => str_repeat('a', 64), 'content_type' => 'text/html', 'size_bytes' => 16],
     ]);
+    expect($entry['content_type'])->toBe('text/html');
 });
 
 test('the content read reports the file list as unknown when an older Worker omits it', function () {
@@ -57,7 +58,8 @@ test('the content read reports the file list as unknown when an older Worker omi
     $entry = (new HttpArtifactContentSource('https://worker.test'))->fetch('acme', 'abc');
 
     expect($entry)->toHaveKey('files')
-        ->and($entry['files'])->toBeNull();
+        ->and($entry['files'])->toBeNull()
+        ->and($entry['content_type'])->toBeNull();
 });
 
 test('the content read accepts a shorter request-path timeout without changing the default', function () {
