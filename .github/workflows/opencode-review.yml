@@ -42,7 +42,7 @@ jobs:
           startsWith(vars.OPENCODE_SECURITY_MODEL, 'opencode/')
         env:
           AUDIENCE: https://opencode.ai/console
-          CLIENT_ID: sk_86c536d6-f743-41be-8b51-c22958c25a5c
+          CLIENT_ID: sk_d6234f5f-8c41-48f6-8178-59939edf8674
         run: |
           set -euo pipefail
           oidc=$(curl --silent --show-error --fail --max-time 30 \
