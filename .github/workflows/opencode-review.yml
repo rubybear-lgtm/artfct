@@ -49,9 +49,13 @@ jobs:
           startsWith(vars.OPENCODE_SECURITY_MODEL, 'opencode-go/')
         env:
           AUDIENCE: https://opencode.ai/console
-          CLIENT_ID: sk_d6234f5f-8c41-48f6-8178-59939edf8674
+          CLIENT_ID: ${{ vars.OPENCODE_OIDC_CLIENT_ID }}
         run: |
           set -euo pipefail
+          if [[ -z "$CLIENT_ID" ]]; then
+            echo '::error::Repository variable OPENCODE_OIDC_CLIENT_ID is not set.'
+            exit 1
+          fi
           oidc=$(curl --silent --show-error --fail --max-time 30 \
             --oauth2-bearer "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" |
@@ -84,7 +88,7 @@ jobs:
           paths="$RUNNER_TEMP/review-paths"
           diff="$RUNNER_TEMP/review-diff.txt"
           default_model='huggingface/deepseek-ai/DeepSeek-V4.1-Flash-1017'
-          printf '## Artfct Specialist Review\n\nHead `%s`\n' "$HEAD_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf '## Artfct Specialist Review\n\nHead \140%s\140\n' "$HEAD_SHA" >> "$GITHUB_STEP_SUMMARY"
 
           if [[ $(wc -l < "$paths") -ge 300 || $(wc -c < "$diff") -gt 200000 ]]; then
             echo 'Specialist review skipped because the diff exceeds the review input limit.' >> "$GITHUB_STEP_SUMMARY"
