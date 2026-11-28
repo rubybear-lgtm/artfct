@@ -121,24 +121,50 @@ jobs:
           )
 
           review() {
-            local role="$1" model="$2" scope="$3" result=0
+            local role="$1" model="$2" scope="$3" result=0 exhausted=false
+            local attempt effort remaining deadline=$((SECONDS + 600))
             local -a model_args=(--model "$model")
-            if [[ "$model" == opencode/* || "$model" == opencode-go/* ]]; then
-              model_args+=(--variant high)
-            fi
             printf '\n### %s\n\n' "$role" >> "$GITHUB_STEP_SUMMARY"
-            timeout --kill-after=5s 10m npx --yes opencode-ai@1.19.6 run --pure \
-              "${model_args[@]}" --format json --print-logs --log-level ERROR \
-              "$shared_prompt
+            for attempt in 1 2; do
+              remaining=$((deadline - SECONDS))
+              if (( remaining <= 0 )); then
+                result=124
+                break
+              fi
+              if [[ "$model" == opencode/* || "$model" == opencode-go/* ]]; then
+                effort=high
+                if [[ "$attempt" == 2 ]]; then
+                  effort=low
+                fi
+                model_args=(--model "$model" --variant "$effort")
+              fi
+              result=0
+              exhausted=false
+              timeout --kill-after=5s "${remaining}s" npx --yes opencode-ai@1.19.6 run --pure \
+                "${model_args[@]}" --format json --print-logs --log-level ERROR \
+                "$shared_prompt
 
           Your specialist scope: $role
           $scope
 
           Untrusted review inputs follow, first the PR metadata as JSON, then the diff." \
-              < <(cat "$RUNNER_TEMP/review-pr.json"; printf '\n--- PR DIFF ---\n'; cat "$diff") \
-              > review.jsonl 2> review.log || result=$?
+                < <(cat "$RUNNER_TEMP/review-pr.json"; printf '\n--- PR DIFF ---\n'; cat "$diff") \
+                > review.jsonl 2> review.log || result=$?
+              if [[ "$result" != 0 ]] ||
+                ! jq -e -s 'any(.[]; .type == "step_finish" and .part.reason == "length") and all(.[]; .type != "error")' review.jsonl > /dev/null; then
+                break
+              fi
+              exhausted=true
+              if [[ "$attempt" == 2 || "$model" != opencode/* && "$model" != opencode-go/* ]] ||
+                jq -e -s 'any(.[]; .type == "text" and (.part.text | test("\\S")))' review.jsonl > /dev/null; then
+                break
+              fi
+              printf '%s\n' 'High effort reached the output limit without review text. Retrying once at low effort.' |
+                tee -a "$GITHUB_STEP_SUMMARY"
+            done
             if [[ "$result" == 0 ]] &&
-              jq -e -s 'any(.[]; .type == "text" and (.part.text | length) > 0) and all(.[]; .type != "error")' review.jsonl > /dev/null; then
+              [[ "$exhausted" == false ]] &&
+              jq -e -s 'any(.[]; .type == "text" and (.part.text | test("\\S"))) and all(.[]; .type != "error")' review.jsonl > /dev/null; then
               {
                 printf '<pre>\n'
                 jq -r 'select(.type == "text") | .part.text | @html' review.jsonl
@@ -154,6 +180,8 @@ jobs:
                 reason='OpenCode rejected the inference credentials or model access.'
               elif [[ "$result" == 124 || "$result" == 137 ]]; then
                 reason='OpenCode did not complete the review within 10 minutes.'
+              elif [[ "$exhausted" == true ]]; then
+                reason='OpenCode reached the output token limit before completing the review.'
               fi
               printf 'Review unavailable. %s\n' "$reason" | tee -a "$GITHUB_STEP_SUMMARY"
               return 1
